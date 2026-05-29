@@ -44,9 +44,9 @@ try {
 
   // 4. 检测其他文件
   const files = [mainJsPath, 'manifest.json'];
-  if (existsSync('styles.css')) files.push('styles.css');
+  if (existsSync('dist/styles.css')) files.push('dist/styles.css');
   if (existsSync('config.json')) files.push('config.json');
-  if (existsSync('dist/assets/wechat-donate.jpg')) files.push('dist/assets/wechat-donate.jpg');
+  // Donate image now uses remote URL, no local file needed
   
   console.log(`📦 将上传文件: ${files.join(', ')}\n`);
 

@@ -272,7 +272,7 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
         donateSection.createEl('h3', { text: '☕ Buy me a coffee' });
         donateSection.createEl('p', { text: 'If this plugin helped you, consider buying me a coffee ☕', cls: 'plugin-donate-desc' });
         const imgWrap = donateSection.createDiv({ cls: 'plugin-donate-qr' });
-        imgWrap.createEl('img', { attr: { src: this.plugin.app.vault.adapter.getResourcePath(`${this.plugin.manifest.dir}/assets/wechat-donate.jpg`), alt: 'WeChat Donate', width: '160' } });
+        imgWrap.createEl('img', { attr: { src: "https://raw.githubusercontent.com/fengshuzi/images/main/wechat-donate.jpg", alt: 'WeChat Donate', width: '160' } });
         imgWrap.createEl('p', { text: 'Scan to donate', cls: 'plugin-donate-label' });
     }
 
