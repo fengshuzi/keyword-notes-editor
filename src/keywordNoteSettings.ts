@@ -1,5 +1,5 @@
 import KeywordNotesPlugin from "./keywordNotesPlugin";
-import { App, debounce, PluginSettingTab, Setting, Modal } from "obsidian";
+import { App, PluginSettingTab, Setting } from "obsidian";
 
 // Keyword configuration interface (supports aggregation: p1+p2+p3+p4|Quadrant, matches any one tag)
 export interface KeywordConfig {

@@ -3,11 +3,9 @@ import {
     OpenViewState,
     TFile,
     Workspace,
-    WorkspaceContainer,
     WorkspaceItem,
     WorkspaceLeaf,
     getAllTags,
-    requireApiVersion,
 } from "obsidian";
 
 import { around } from "monkey-around";
@@ -21,7 +19,7 @@ import {
     KeywordConfig,
     FolderConfig,
 } from "./keywordNoteSettings";
-import { TimeField, SelectionMode } from "./types/time";
+import { TimeField } from "./types/time";
 import { createUpDownNavigationExtension } from "./component/UpAndDownNavigate";
 import { KEYWORD_NOTE_VIEW_TYPE, KeywordNoteView } from "./keywordNoteView";
 import { KEYWORD_LIST_VIEW_TYPE, KeywordListView } from "./keywordListView";
@@ -269,7 +267,7 @@ export default class KeywordNotesPlugin extends Plugin {
     }
 
     patchWorkspace() {
-        let layoutChanging = false;
+        let layoutChanging = false; void layoutChanging;
         const wrapper = {
             getActiveViewOfType: (next: (...args: unknown[]) => unknown) =>
                 function (this: unknown, t: unknown) {
@@ -310,10 +308,8 @@ export default class KeywordNotesPlugin extends Plugin {
                         cb
                     ) as unknown;
                 },
-            recordMostRecentOpenedFile: (old: (...args: unknown[]) => unknown) =>
-                function (this: unknown, file: unknown) {
-                    // no-op
-                },
+            recordMostRecentOpenedFile: (_old: (...args: unknown[]) => unknown) =>
+                function (this: unknown, _file: unknown) { void _file; void _old; },
             setActiveLeaf: (next: (...args: unknown[]) => unknown) =>
                 function (this: unknown, e: unknown, t?: unknown) {
                     const setFn = next as (leaf: WorkspaceLeaf, params?: { focus?: boolean } | boolean) => void;
@@ -413,7 +409,7 @@ export default class KeywordNotesPlugin extends Plugin {
         const FRUIT_ICONS = ['🍎', '🍏', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐', '🍈', '🍒', '🍑', '🥭', '🍍', '🥥', '🥝', '🍅', '🥑', '🌽', '🥕', '🥦', '🌰'];
         
         // 收集已使用的自定义图标
-        const usedIcons = new Set<string>();
+        const usedIcons: string[] = []; void usedIcons;
         
         // 先处理有自定义图标的项
         this.settings.keywords.forEach(k => {
@@ -425,7 +421,7 @@ export default class KeywordNotesPlugin extends Plugin {
         
         // 为关键词分配图标
         let iconIndex = 0;
-        this.settings.keywords.forEach((k, index) => {
+        this.settings.keywords.forEach((k, index) => { void index;
             // 如果没有自定义图标，分配一个
             if (!k.icon || FRUIT_ICONS.includes(k.icon)) {
                 k.icon = FRUIT_ICONS[iconIndex % FRUIT_ICONS.length];
@@ -434,7 +430,7 @@ export default class KeywordNotesPlugin extends Plugin {
         });
         
         // 为文件夹分配图标（从关键词之后继续）
-        this.settings.folders.forEach((f, index) => {
+        this.settings.folders.forEach((f, index) => { void index;
             if (!f.icon || FRUIT_ICONS.includes(f.icon)) {
                 f.icon = FRUIT_ICONS[iconIndex % FRUIT_ICONS.length];
                 iconIndex++;

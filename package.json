@@ -4,7 +4,7 @@
   "description": "View and edit multiple notes grouped by keyword tags.",
   "main": "main.js",
   "scripts": {
-    "lint": "npx eslint --fix --ext .ts,.svelte .",
+    "lint": "eslint .",
     "dev": "npm run lint && vite build --watch --mode development",
     "build": "npx svelte-check && vite build --mode production && cp manifest.json dist/ ",
     "build:deploy": "npm run build && npm run deploy",

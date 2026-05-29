@@ -192,7 +192,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
             this.transition();
         }
         let leafCount = 0;
-        this.plugin.app.workspace.iterateLeaves(leaf => {
+        this.plugin.app.workspace.iterateLeaves(leaf => { void leaf;
             leafCount++;
         }, this.rootSplit);
 

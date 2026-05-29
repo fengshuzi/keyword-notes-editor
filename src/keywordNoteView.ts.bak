@@ -216,8 +216,8 @@ export class KeywordNoteView extends ItemView {
     // }
 
     async onOpen(): Promise<void> {
-        this.scope.register(["Mod"], "f", (_e) => {
-            void _e;
+        this.scope.register(["Mod"], "f", (e) => {
+            // do-nothing
         });
 
         // 修复：空格键事件从嵌入的 CodeMirror 编辑器冒泡上来时，

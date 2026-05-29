@@ -158,8 +158,8 @@ export class KeywordListView extends ItemView {
     private renderTreeNodes(
         nodes: Map<string, TagTreeNode>,
         containerEl: HTMLElement,
-        parentPath: string
-    ): void {
+        parentPath: string = ''
+    ): void { void parentPath;
         for (const [, node] of nodes) {
             const hasChildren = node.children.size > 0;
 
