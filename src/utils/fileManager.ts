@@ -1,0 +1,319 @@
+import { TFile, moment, App } from "obsidian";
+import { TimeRange, TimeField } from "../types/time";
+
+export interface FileManagerOptions {
+    mode: "folder" | "tag";
+    target?: string;
+    timeRange?: TimeRange;
+    customRange?: { start: Date; end: Date } | null;
+    app?: App;
+    timeField?: TimeField;
+    /** 标签模式下是否同时匹配子标签（target/subtag）*/
+    includeSubTags?: boolean;
+}
+
+export class FileManager {
+    private allFiles: TFile[] = [];
+    private filteredFiles: TFile[] = [];
+    private hasFetched: boolean = false;
+
+    // Make options public so it can be accessed from outside
+    public options: FileManagerOptions;
+
+    constructor(options: FileManagerOptions) {
+        this.options = options;
+        this.fetchFiles();
+    }
+
+    /**
+     * Helper method to parse time field and check if it's reverse
+     * @param timeField The time field to parse
+     * @returns An object containing isReverse flag and baseTimeField
+     */
+    private parseTimeField(timeField: TimeField | undefined): {
+        isReverse: boolean;
+        baseTimeField: string;
+    } {
+        const field = timeField || "mtime";
+        const isReverse = field.endsWith("Reverse");
+        const baseTimeField = isReverse ? field.replace("Reverse", "") : field;
+        return { isReverse, baseTimeField };
+    }
+
+    /**
+     * Helper method to sort files by time field
+     * @param files The files to sort
+     * @param timeField The time field to sort by
+     * @returns Sorted files
+     */
+    private sortFilesByTimeField(
+        files: TFile[],
+        timeField?: TimeField
+    ): TFile[] {
+        const { isReverse, baseTimeField } = this.parseTimeField(timeField);
+
+        return [...files].sort((a, b) => {
+            // Handle name-based sorting
+            if (baseTimeField === "name") {
+                if (isReverse) {
+                    return b.name.localeCompare(a.name);
+                }
+                return a.name.localeCompare(b.name);
+            }
+
+            // Handle time-based sorting
+            if (isReverse) {
+                return a.stat[baseTimeField] - b.stat[baseTimeField];
+            }
+            return b.stat[baseTimeField] - a.stat[baseTimeField];
+        });
+    }
+
+    public fetchFiles(): void {
+        if (this.hasFetched) return;
+
+        switch (this.options.mode) {
+            case "folder":
+                this.fetchFolderFiles();
+                break;
+            case "tag":
+                this.fetchTaggedFiles();
+                break;
+        }
+
+        this.hasFetched = true;
+        this.filterFilesByRange();
+    }
+
+    private fetchFolderFiles(): void {
+        if (!this.options.target || !this.options.app) return;
+
+        // Get all files in the vault
+        const allFiles = this.options.app.vault.getMarkdownFiles();
+
+        // Filter files by folder path
+        this.allFiles = allFiles.filter((file) => {
+            const folderPath = file.parent?.path || "";
+            return (
+                folderPath === this.options.target ||
+                folderPath.startsWith(this.options.target + "/")
+            );
+        });
+
+        // Sort files by the specified time field
+        this.allFiles = this.sortFilesByTimeField(
+            this.allFiles,
+            this.options.timeField
+        );
+    }
+
+    private fetchTaggedFiles(): void {
+        if (!this.options.target || !this.options.app) return;
+
+        // Convert target string to array of tags
+        const targetTags = this.options.target
+            .split("+")
+            .map((t) => t.trim())
+            .filter(Boolean)
+            .map((t) => (t.startsWith("#") ? t : "#" + t));
+
+        const includeSubTags = this.options.includeSubTags ?? false;
+
+        const app = this.options.app;
+        const allMdFiles = app.vault.getMarkdownFiles();
+
+        for (const file of allMdFiles) {
+            const fileCache = app.metadataCache.getFileCache(file);
+            if (!fileCache || !fileCache.tags) continue;
+
+            const matches = fileCache.tags.some((tagObj) =>
+                targetTags.some((targetTag) => {
+                    if (includeSubTags) {
+                        return tagObj.tag === targetTag || tagObj.tag.startsWith(targetTag + '/');
+                    }
+                    return tagObj.tag === targetTag;
+                })
+            );
+
+            if (matches) {
+                this.allFiles.push(file);
+            }
+        }
+
+        // Sort files by the specified time field
+        this.allFiles = this.sortFilesByTimeField(
+            this.allFiles,
+            this.options.timeField
+        );
+    }
+
+    private filterFilesByRange(): void {
+        if (!this.options.timeRange || this.options.timeRange === "all") {
+            this.filteredFiles = [...this.allFiles];
+            return;
+        }
+
+        const { baseTimeField } = this.parseTimeField(
+            this.options.timeField
+        );
+
+        let now = moment();
+        let cutoff: moment.Moment;
+
+        if (this.options.timeRange === "custom" && this.options.customRange) {
+            // Custom range: filter files between start and end date
+            const startDate = moment(this.options.customRange.start);
+            const endDate = moment(this.options.customRange.end);
+
+            this.filteredFiles = this.allFiles.filter((file) => {
+                const fileTime = moment(file.stat[baseTimeField]);
+                return fileTime.isBetween(startDate, endDate, 'day', '[]');
+            });
+            return;
+        }
+
+        // Calculate the date threshold based on the time range
+        switch (this.options.timeRange) {
+            case "week":
+                cutoff = now.clone().subtract(1, "week");
+                break;
+            case "month":
+                cutoff = now.clone().subtract(1, "month");
+                break;
+            case "quarter":
+                cutoff = now.clone().subtract(3, "months");
+                break;
+            case "year":
+                cutoff = now.clone().subtract(1, "year");
+                break;
+            case "last-week":
+                cutoff = now.clone().subtract(1, "week");
+                now = now.clone().subtract(1, "week");
+                break;
+            case "last-month":
+                cutoff = now.clone().subtract(1, "month");
+                cutoff = cutoff.clone().startOf("month");
+                now = now.clone().startOf("month");
+                break;
+            case "last-quarter":
+                cutoff = now.clone().subtract(3, "months");
+                cutoff = cutoff.clone().startOf("month");
+                now = now.clone().subtract(3, "months");
+                now = now.clone().endOf("month");
+                break;
+            case "last-year":
+                cutoff = now.clone().subtract(1, "year");
+                cutoff = cutoff.clone().startOf("year");
+                now = now.clone().subtract(1, "year");
+                now = now.clone().endOf("year");
+                break;
+            default:
+                cutoff = now.clone().subtract(1, "week");
+        }
+
+        this.filteredFiles = this.allFiles.filter((file) => {
+            const fileTime = moment(file.stat[baseTimeField]);
+            return fileTime.isAfter(cutoff);
+        });
+
+        // Apply the sort
+        this.filteredFiles = this.sortFilesByTimeField(
+            this.filteredFiles,
+            this.options.timeField
+        );
+    }
+
+    public fileCreate(file: TFile): void {
+        // Handle file creation for folder and tag modes
+        if (this.options.mode === "folder") {
+            if (!this.options.target || !this.options.app) return;
+            const folderPath = file.parent?.path || "";
+            if (
+                folderPath === this.options.target ||
+                folderPath.startsWith(this.options.target + "/")
+            ) {
+                this.allFiles.push(file);
+                // Sort and update filtered files
+                this.allFiles = this.sortFilesByTimeField(
+                    this.allFiles,
+                    this.options.timeField
+                );
+                this.filterFilesByRange();
+            }
+        } else if (this.options.mode === "tag") {
+            this.handleTaggedFileCreate(file);
+        }
+    }
+
+    private handleTaggedFileCreate(file: TFile): void {
+        if (!this.options.target || !this.options.app) return;
+
+        const targetTags = this.options.target
+            .split("+")
+            .map((t) => t.trim())
+            .filter(Boolean)
+            .map((t) => (t.startsWith("#") ? t : "#" + t));
+
+        const fileCache = this.options.app.metadataCache.getFileCache(file);
+        if (!fileCache || !fileCache.tags) return;
+
+        const includeSubTags = this.options.includeSubTags ?? false;
+        const matches = (tag: { tag: string }) =>
+            targetTags.some((targetTag) => {
+                if (includeSubTags) {
+                    return tag.tag === targetTag || tag.tag.startsWith(targetTag + '/');
+                }
+                return tag.tag === targetTag;
+            });
+
+        if (fileCache.tags!.some(matches)) {
+            this.allFiles.push(file);
+
+            this.allFiles = this.sortFilesByTimeField(
+                this.allFiles,
+                this.options.timeField
+            );
+
+            this.filterFilesByRange();
+        }
+    }
+
+    public fileDelete(file: TFile): void {
+        this.filteredFiles = this.filteredFiles.filter((f) => {
+            return f.path !== file.path;
+        });
+        this.allFiles = this.allFiles.filter((f) => {
+            return f.path !== file.path;
+        });
+    }
+
+    public getAllFiles(): TFile[] {
+        return this.allFiles;
+    }
+
+    public getFilteredFiles(): TFile[] {
+        return this.filteredFiles;
+    }
+
+    public updateOptions(options: Partial<FileManagerOptions>): void {
+        this.options = { ...this.options, ...options };
+
+        if (options.timeRange || options.customRange) {
+            this.filterFilesByRange();
+        }
+
+        if (options.mode || options.target) {
+            this.allFiles = [];
+            this.filteredFiles = [];
+            this.hasFetched = false;
+            this.fetchFiles();
+        }
+    }
+
+    public forceRefresh(): void {
+        this.allFiles = [];
+        this.filteredFiles = [];
+        this.hasFetched = false;
+        this.fetchFiles();
+    }
+}
