@@ -244,6 +244,4 @@ export class KeywordListView extends ItemView {
             else this.plugin.openFolderView(item as FolderConfig);
         });
     }
-
-    async onClose(): Promise<void> {}
 }
