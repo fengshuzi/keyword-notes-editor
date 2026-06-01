@@ -1,4 +1,4 @@
-import { TFile, moment, App } from "obsidian";
+import { TFile, moment, App, getAllTags } from "obsidian";
 import { TimeRange, TimeField } from "../types/time";
 
 export interface FileManagerOptions {
@@ -10,6 +10,8 @@ export interface FileManagerOptions {
     timeField?: TimeField;
     /** 标签模式下是否同时匹配子标签（target/subtag）*/
     includeSubTags?: boolean;
+    /** 扫描时排除的文件夹路径列表（如 ["journals"]）*/
+    excludedFolders?: string[];
 }
 
 export class FileManager {
@@ -69,6 +71,21 @@ export class FileManager {
         });
     }
 
+
+    /**
+     * Check if a file is inside an excluded folder
+     */
+    private isExcluded(file: TFile): boolean {
+        const excluded = this.options.excludedFolders;
+        if (!excluded || excluded.length === 0) return false;
+        const folderPath = file.parent?.path || "";
+        return excluded.some(folder => {
+            const f = folder.trim();
+            if (!f) return false;
+            return folderPath === f || folderPath.startsWith(f + "/");
+        });
+    }
+
     public fetchFiles(): void {
         if (this.hasFetched) return;
 
@@ -91,8 +108,9 @@ export class FileManager {
         // Get all files in the vault
         const allFiles = this.options.app.vault.getMarkdownFiles();
 
-        // Filter files by folder path
+        // Filter files by folder path, excluding excluded folders
         this.allFiles = allFiles.filter((file) => {
+            if (this.isExcluded(file)) return false;
             const folderPath = file.parent?.path || "";
             return (
                 folderPath === this.options.target ||
@@ -110,10 +128,10 @@ export class FileManager {
     private fetchTaggedFiles(): void {
         if (!this.options.target || !this.options.app) return;
 
-        // Convert target string to array of tags
+        // Convert target string to array of lowercase tags with # prefix
         const targetTags = this.options.target
             .split("+")
-            .map((t) => t.trim())
+            .map((t) => t.trim().toLowerCase())
             .filter(Boolean)
             .map((t) => (t.startsWith("#") ? t : "#" + t));
 
@@ -124,18 +142,20 @@ export class FileManager {
 
         for (const file of allMdFiles) {
             const fileCache = app.metadataCache.getFileCache(file);
-            if (!fileCache || !fileCache.tags) continue;
+            if (!fileCache) continue;
 
-            const matches = fileCache.tags.some((tagObj) =>
-                targetTags.some((targetTag) => {
+            const tags = getAllTags(fileCache) || [];
+            const matches = tags.some((tag) => {
+                const tagLower = tag.toLowerCase();
+                return targetTags.some((targetTag) => {
                     if (includeSubTags) {
-                        return tagObj.tag === targetTag || tagObj.tag.startsWith(targetTag + '/');
+                        return tagLower === targetTag || tagLower.startsWith(targetTag + '/');
                     }
-                    return tagObj.tag === targetTag;
-                })
-            );
+                    return tagLower === targetTag;
+                });
+            });
 
-            if (matches) {
+            if (matches && !this.isExcluded(file)) {
                 this.allFiles.push(file);
             }
         }
@@ -250,23 +270,26 @@ export class FileManager {
 
         const targetTags = this.options.target
             .split("+")
-            .map((t) => t.trim())
+            .map((t) => t.trim().toLowerCase())
             .filter(Boolean)
             .map((t) => (t.startsWith("#") ? t : "#" + t));
 
         const fileCache = this.options.app.metadataCache.getFileCache(file);
-        if (!fileCache || !fileCache.tags) return;
+        if (!fileCache) return;
 
+        const tags = getAllTags(fileCache) || [];
         const includeSubTags = this.options.includeSubTags ?? false;
-        const matches = (tag: { tag: string }) =>
-            targetTags.some((targetTag) => {
+        const matches = tags.some((tag) => {
+            const tagLower = tag.toLowerCase();
+            return targetTags.some((targetTag) => {
                 if (includeSubTags) {
-                    return tag.tag === targetTag || tag.tag.startsWith(targetTag + '/');
+                    return tagLower === targetTag || tagLower.startsWith(targetTag + '/');
                 }
-                return tag.tag === targetTag;
+                return tagLower === targetTag;
             });
+        });
 
-        if (fileCache.tags!.some(matches)) {
+        if (matches) {
             this.allFiles.push(file);
 
             this.allFiles = this.sortFilesByTimeField(

@@ -42,7 +42,8 @@
         customRange: customRange,
         app: plugin.app,
         timeField: timeField,
-        includeSubTags: includeSubTags
+        includeSubTags: includeSubTags,
+        excludedFolders: plugin.settings.excludedFolders || []
     } as FileManagerOptions;
 
     $: if (fileManager && (selectedRange !== fileManager.options.timeRange || 
@@ -57,7 +58,8 @@
             mode: selectionMode,
             target: target,
             timeField: timeField,
-            includeSubTags: includeSubTags
+            includeSubTags: includeSubTags,
+            excludedFolders: plugin.settings.excludedFolders || []
         });
         
         // Reset rendered files and start filling viewport again

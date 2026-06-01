@@ -125,9 +125,17 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
         return el ? popovers.get(el) : undefined;
     }
 
+    private static _iteratingPopovers = false;
+
     static iteratePopoverLeaves(ws: Workspace, cb: (leaf: WorkspaceLeaf) => boolean | void) {
-        for (const popover of this.activePopovers()) {
-            if (popover.rootSplit && ws.iterateLeaves(cb, popover.rootSplit)) return true;
+        if (KeywordNoteEditor._iteratingPopovers) return false;
+        KeywordNoteEditor._iteratingPopovers = true;
+        try {
+            for (const popover of this.activePopovers()) {
+                if (popover.rootSplit && ws.iterateLeaves(cb, popover.rootSplit)) return true;
+            }
+        } finally {
+            KeywordNoteEditor._iteratingPopovers = false;
         }
         return false;
     }
@@ -211,7 +219,6 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
     }
 
     setInitialDimensions() {
-
         this.hoverEl.style.height = 'auto';
         this.hoverEl.style.width = "100%";
     }
@@ -465,7 +472,6 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
         const state = this.buildState(parentMode, eState);
         const leaf = await this.openFile(file, state as OpenViewState, createInLeaf);
         const leafViewType = leaf?.view?.getViewType();
-        // console.log(leaf);
         if (leafViewType === "image") {
             // TODO: temporary workaround to prevent image popover from disappearing immediately when using live preview
             if (

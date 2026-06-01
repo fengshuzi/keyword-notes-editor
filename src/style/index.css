@@ -8,11 +8,7 @@
 }
 
 .kw-editor .workspace-leaf {
-    /* Reset inherited styles */
-    display: block;
-    position: relative;
-    width: 100%;
-    height: 100%;
+    all: unset;
 }
 
 .kw-editor .kw-content {
@@ -34,16 +30,16 @@
 }
 
 .kw-editor .cm-content {
-    padding-bottom: 0;
-    padding-top: 0;
+    padding-bottom: 0 !important;
+    padding-top: 0 !important;
 }
 
 .kw-editor .view-content {
-    background: none;
+    background: none !important;
 }
 
 .kw-editor .cm-scroller {
-    padding: 0;
+    padding: 0 !important;
     overflow-y: clip;
 }
 .keyword-note-view .keyword-note-wrapper::before {
@@ -493,3 +489,15 @@ body.keyword-notes-hide-backlinks .keyword-note-view .embedded-backlinks {
 .keyword-list-subtag-children.is-expanded {
     display: flex;
 }
+
+/* Settings textareas */
+.kw-settings-textarea {
+    width: 100%;
+    height: 100px;
+}
+
+.kw-settings-textarea-sm {
+    width: 100%;
+    height: 80px;
+}
+

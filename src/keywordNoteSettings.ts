@@ -33,7 +33,9 @@ export interface KeywordNotesSettings {
         type: "folder" | "tag";
         target: string;
     }[];
-    
+
+    /** Folders to exclude from keyword scanning (e.g. journals) */
+    excludedFolders: string[];
 }
 
 // Fruit icon list (shared by keywords and folders)
@@ -48,6 +50,7 @@ export const DEFAULT_SETTINGS: KeywordNotesSettings = {
     keywords: [],
     folders: [],
     preset: [],
+    excludedFolders: [],
 };
 
 // Parse keyword configuration string (supports aggregation: p1+p2+p3+p4|Quadrant)
@@ -133,21 +136,20 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
     display(): void {
         const { containerEl } = this;
         containerEl.empty();
-        containerEl.createEl("h1", { text: "Keyword Notes Editor" });
+        new Setting(containerEl).setName("Keyword Notes Editor").setHeading();
 
         // Keyword configuration
-        containerEl.createEl("h2", { text: "Keyword Configuration" });
+        new Setting(containerEl).setName("Keyword Configuration").setHeading();
 
         new Setting(containerEl)
             .setName("Keyword List")
             .setDesc("Configure keywords to display. Format: tag|alias|icon, multiple separated by commas. Aggregation mode: p1+p2+p3+p4|Quadrant matches any one tag.")
             .addTextArea((text) => {
-                text.inputEl.style.width = "100%";
-                text.inputEl.style.height = "100px";
+                text.inputEl.addClass("kw-settings-textarea");
                 text
                     .setValue(keywordsToString(this.plugin.settings.keywords))
                     .setPlaceholder("test/work|Work Project,project|Project")
-                    .onChange(async (value) => {
+                    .onChange((value) => {
                         this.plugin.settings.keywords = parseKeywordsString(value);
                         this.applySettingsUpdate();
                         // Reassign icons to avoid duplicates
@@ -171,18 +173,17 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
         }
 
         // Folder configuration
-        containerEl.createEl("h2", { text: "Folder Configuration" });
+        new Setting(containerEl).setName("Folder Configuration").setHeading();
 
         new Setting(containerEl)
             .setName("Folder List")
             .setDesc("Configure folders to display. Format: path|alias|icon, multiple separated by commas. Supports multi-level paths, e.g.: projects/work|Work Projects,archive|Archive")
             .addTextArea((text) => {
-                text.inputEl.style.width = "100%";
-                text.inputEl.style.height = "100px";
+                text.inputEl.addClass("kw-settings-textarea");
                 text
                     .setValue(foldersToString(this.plugin.settings.folders))
                     .setPlaceholder("projects/work|Work Projects,archive|Archive")
-                    .onChange(async (value) => {
+                    .onChange((value) => {
                         // Folder icons start after keywords count to avoid duplication
                         const keywordCount = this.plugin.settings.keywords.length;
                         this.plugin.settings.folders = parseFoldersString(value, keywordCount);
@@ -206,7 +207,24 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
             });
         }
 
-        containerEl.createEl("h2", { text: "Display Settings" });
+        new Setting(containerEl)
+            .setName("Excluded Folders")
+            .setDesc("Folders to exclude from keyword scanning. One folder path per line (e.g. journals).")
+            .addTextArea((text) => {
+                text.inputEl.addClass("kw-settings-textarea-sm");
+                text
+                    .setValue((this.plugin.settings.excludedFolders || []).join("\n"))
+                    .setPlaceholder("journals\narchive/old")
+                    .onChange((value) => {
+                        this.plugin.settings.excludedFolders = value
+                            .split("\n")
+                            .map(s => s.trim())
+                            .filter(s => s.length > 0);
+                        this.applySettingsUpdate();
+                    });
+            });
+
+        new Setting(containerEl).setName("Display Settings").setHeading();
 
 
         new Setting(containerEl)
@@ -269,7 +287,7 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
             );
 
         const donateSection = containerEl.createDiv({ cls: 'plugin-donate-section' });
-        donateSection.createEl('h3', { text: '☕ Buy me a coffee' });
+        new Setting(donateSection).setName('☕ Buy me a coffee').setHeading();
         donateSection.createEl('p', { text: 'If this plugin helped you, consider buying me a coffee ☕', cls: 'plugin-donate-desc' });
         const imgWrap = donateSection.createDiv({ cls: 'plugin-donate-qr' });
         imgWrap.createEl('img', { attr: { src: "https://raw.githubusercontent.com/fengshuzi/images/main/wechat-donate.jpg", alt: 'WeChat Donate', width: '160' } });

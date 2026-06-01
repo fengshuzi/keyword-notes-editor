@@ -10,6 +10,7 @@ import {
     Modal,
     App,
     ButtonComponent,
+    Setting,
 } from "obsidian";
 import { TimeRange, TimeField } from "./types/time";
 import KeywordNoteEditorView from "./component/KeywordNoteEditorView.svelte";
@@ -158,8 +159,8 @@ export class KeywordNoteView extends ItemView {
 
     async setState(state: unknown, result?: unknown): Promise<void> {
         await super.setState(state, result as ViewStateResult);
-        // Handle our custom state properties if they exist
-        if (state && typeof state === "object" && !this.view) {
+        // Restore workspace state (e.g. after Obsidian restart)
+        if (state && typeof state === "object") {
             const customState = state as {
                 selectionMode?: "folder" | "tag";
                 target?: string;
@@ -180,27 +181,17 @@ export class KeywordNoteView extends ItemView {
             if (customState.includeSubTags !== undefined)
                 this.includeSubTags = customState.includeSubTags;
 
-            this.view = new KeywordNoteEditorView({
-                target: this.contentEl,
-                props: {
-                    plugin: this.plugin,
-                    leaf: this.leaf,
-                    selectedRange: this.selectedDaysRange,
-                    customRange: this.customRange,
+            // View is created in onOpen(); update its props if already mounted
+            if (this.view) {
+                this.view.$set({
                     selectionMode: this.selectionMode,
                     target: this.target,
                     timeField: this.timeField,
+                    selectedRange: this.selectedDaysRange,
+                    customRange: this.customRange,
                     includeSubTags: this.includeSubTags,
-                },
-            });
-
-            this.app.workspace.onLayoutReady(this.view.tick.bind(this));
-
-            this.registerInterval(
-                window.setInterval(async () => {
-                    this.view.check();
-                }, 1000 * 60 * 60)
-            );
+                });
+            }
         }
     }
 
@@ -285,21 +276,35 @@ export class KeywordNoteView extends ItemView {
 
         this.addAction("refresh", "Refresh", () => {
             if (this.view) {
-                this.view.check();
-
-                // Update the view to get the latest files
-                this.view.tick();
-
-                // Force a refresh of the file list
-                this.view.$set({
-                    selectedRange: this.selectedDaysRange,
-                    customRange: this.customRange,
-                });
+                this.view.refresh();
             }
         });
 
         this.app.vault.on("create", this.onFileCreate);
         this.app.vault.on("delete", this.onFileDelete);
+
+        // Create Svelte view here so it exists regardless of how the view is opened
+        if (!this.view) {
+            this.view = new KeywordNoteEditorView({
+                target: this.contentEl,
+                props: {
+                    plugin: this.plugin,
+                    leaf: this.leaf,
+                    selectedRange: this.selectedDaysRange,
+                    customRange: this.customRange,
+                    selectionMode: this.selectionMode,
+                    target: this.target,
+                    timeField: this.timeField,
+                    includeSubTags: this.includeSubTags,
+                },
+            });
+            this.app.workspace.onLayoutReady(this.view.refresh.bind(this.view));
+            this.registerInterval(
+                window.setInterval(() => {
+                    if (this.view) this.view.refresh();
+                }, 1000 * 60 * 60)
+            );
+        }
     }
 
 
@@ -323,7 +328,7 @@ class CustomRangeModal extends Modal {
     onOpen() {
         const { contentEl } = this;
 
-        contentEl.createEl("h2", { text: "Select Custom Date Range" });
+        new Setting(contentEl).setName("Select Custom Date Range").setHeading();
 
         const startDateContainer = contentEl.createEl("div", {
             cls: "custom-range-date-container",
