@@ -117,31 +117,38 @@ export default class KeywordNotesPlugin extends Plugin {
         return keyword.keyword;
     }
 
+    // IMPORTANT: 所有 open*View 方法必须复用已有的 KEYWORD_NOTE_VIEW_TYPE leaf，
+    // 而非每次 getLeaf(true) 创建新 leaf。原因：Obsidian 对同类型 view 连续调用
+    // getLeaf(true) + setViewState 行为不稳定，会导致视图不切换。
+    // 正确做法：找到已有 leaf → 更新 setSelectionMode/refresh → revealLeaf。
+
     // Open keyword view (includes sub-tags by default)
     async openKeywordView(keyword: KeywordConfig) {
         const workspace = this.app.workspace;
         const target = this.getKeywordTarget(keyword);
 
-        // 检查是否已存在相同的视图
         const existingLeaves = workspace.getLeavesOfType(KEYWORD_NOTE_VIEW_TYPE);
-        for (const leaf of existingLeaves) {
+        if (existingLeaves.length > 0) {
+            const leaf = existingLeaves[0];
             const view = leaf.view as KeywordNoteView;
-            if (view.selectionMode === "tag" && view.target === target) {
-                // 已存在，激活并强制刷新数据（避免 metadataCache 未就绪时的空数据缓存）
-                workspace.revealLeaf(leaf);
-                view.refresh();
-                return;
-            }
+
+            view.setSelectionMode("tag", target);
+            view.setTimeField("mtime");
+            view.setIncludeSubTags(true);
+            view.setKeywordDisplay(keyword);
+            view.refresh();
+
+            workspace.revealLeaf(leaf);
+            return;
         }
 
         // 不存在，创建新视图
         const leaf = workspace.getLeaf(true);
         await leaf.setViewState({ type: KEYWORD_NOTE_VIEW_TYPE });
 
-        // 获取视图并设置为标签模式，始终包含子标签
         const view = leaf.view as KeywordNoteView;
         view.setSelectionMode("tag", target);
-        view.setTimeField("mtime"); // 按修改时间倒序
+        view.setTimeField("mtime");
         view.setIncludeSubTags(true);
         view.setKeywordDisplay(keyword);
 
@@ -152,13 +159,19 @@ export default class KeywordNotesPlugin extends Plugin {
     async openSubTagView(subTag: string, includeSubTags = false) {
         const workspace = this.app.workspace;
 
+        // 复用已有的 keyword-note-view leaf
         const existingLeaves = workspace.getLeavesOfType(KEYWORD_NOTE_VIEW_TYPE);
-        for (const leaf of existingLeaves) {
+        if (existingLeaves.length > 0) {
+            const leaf = existingLeaves[0];
             const view = leaf.view as KeywordNoteView;
-            if (view.selectionMode === "tag" && view.target === subTag && view.includeSubTags === includeSubTags) {
-                workspace.revealLeaf(leaf);
-                return;
-            }
+
+            view.setSelectionMode("tag", subTag);
+            view.setTimeField("mtime");
+            view.setIncludeSubTags(includeSubTags);
+            view.refresh();
+
+            workspace.revealLeaf(leaf);
+            return;
         }
 
         const leaf = workspace.getLeaf(true);
@@ -196,26 +209,28 @@ export default class KeywordNotesPlugin extends Plugin {
     // 打开文件夹视图
     async openFolderView(folder: FolderConfig) {
         const workspace = this.app.workspace;
-        
-        // 检查是否已存在相同的视图
+
+        // 复用已有的 keyword-note-view leaf
         const existingLeaves = workspace.getLeavesOfType(KEYWORD_NOTE_VIEW_TYPE);
-        for (const leaf of existingLeaves) {
+        if (existingLeaves.length > 0) {
+            const leaf = existingLeaves[0];
             const view = leaf.view as KeywordNoteView;
-            if (view.selectionMode === "folder" && view.target === folder.path) {
-                // 已存在，直接激活
-                workspace.revealLeaf(leaf);
-                return;
-            }
+
+            view.setSelectionMode("folder", folder.path);
+            view.setTimeField("mtime");
+            view.setFolderDisplay(folder);
+            view.refresh();
+
+            workspace.revealLeaf(leaf);
+            return;
         }
-        
-        // 不存在，创建新视图
+
         const leaf = workspace.getLeaf(true);
         await leaf.setViewState({ type: KEYWORD_NOTE_VIEW_TYPE });
 
-        // 获取视图并设置为文件夹模式
         const view = leaf.view as KeywordNoteView;
         view.setSelectionMode("folder", folder.path);
-        view.setTimeField("mtime"); // 按修改时间倒序
+        view.setTimeField("mtime");
         view.setFolderDisplay(folder);
 
         workspace.revealLeaf(leaf);
@@ -223,6 +238,21 @@ export default class KeywordNotesPlugin extends Plugin {
 
     async openTagView(tagName: string, timeField: TimeField = "mtime") {
         const workspace = this.app.workspace;
+
+        // 复用已有的 keyword-note-view leaf
+        const existingLeaves = workspace.getLeavesOfType(KEYWORD_NOTE_VIEW_TYPE);
+        if (existingLeaves.length > 0) {
+            const leaf = existingLeaves[0];
+            const view = leaf.view as KeywordNoteView;
+
+            view.setSelectionMode("tag", tagName);
+            view.setTimeField(timeField);
+            view.refresh();
+
+            workspace.revealLeaf(leaf);
+            return;
+        }
+
         const leaf = workspace.getLeaf(true);
         await leaf.setViewState({ type: KEYWORD_NOTE_VIEW_TYPE });
 
@@ -272,7 +302,7 @@ export default class KeywordNotesPlugin extends Plugin {
             getActiveViewOfType: (next: (...args: unknown[]) => unknown) =>
                 function (this: unknown, t: unknown) {
                     const fn = next as (type: { VIEW_TYPE?: string }, ...args: unknown[]) => { VIEW_TYPE?: string } | null;
-                    const result = fn(t as { VIEW_TYPE?: string });
+                    const result = fn.call(this, t as { VIEW_TYPE?: string });
                     if (!result) {
                         if ((t as { VIEW_TYPE?: string })?.VIEW_TYPE === "markdown") {
                             const activeLeaf = this as unknown as { activeLeaf?: { view?: { editMode?: unknown } } };
