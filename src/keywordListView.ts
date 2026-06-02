@@ -46,6 +46,7 @@ function buildTagTree(subTags: string[], rootPrefix: string): Map<string, TagTre
 export class KeywordListView extends ItemView {
     plugin: KeywordNotesPlugin;
     private listEl: HTMLElement;
+    private activeKey = "";
 
     /** Collapse state: key is node fullPath, value is whether expanded */
     private expandedStates: Map<string, boolean> = new Map();
@@ -69,6 +70,26 @@ export class KeywordListView extends ItemView {
 
     public refresh(): void {
         if (this.listEl) this.renderList();
+    }
+
+    private makeActiveKey(type: "folder" | "tag", target: string): string {
+        return `${type}:${target}`;
+    }
+
+    private setActiveItem(type: "folder" | "tag", target: string): void {
+        this.activeKey = this.makeActiveKey(type, target);
+        this.listEl
+            ?.querySelectorAll(".is-active")
+            .forEach((el) => el.removeClass("is-active"));
+        this.listEl
+            ?.querySelector(`[data-keyword-target="${CSS.escape(this.activeKey)}"]`)
+            ?.addClass("is-active");
+    }
+
+    private markActive(el: HTMLElement, type: "folder" | "tag", target: string): void {
+        const key = this.makeActiveKey(type, target);
+        el.dataset.keywordTarget = key;
+        el.toggleClass("is-active", this.activeKey === key);
     }
 
     // ── Top-level list rendering ────────────────────────────────────────────
@@ -113,6 +134,7 @@ export class KeywordListView extends ItemView {
 
         // Parent node row
         const parentEl = wrapperEl.createDiv({ cls: "keyword-list-item keyword-list-item--parent" });
+        this.markActive(parentEl, "tag", item.keyword);
         const arrowEl = parentEl.createSpan({
             cls: `keyword-list-item-arrow ${isExpanded ? "is-expanded" : ""}`
         });
@@ -136,9 +158,14 @@ export class KeywordListView extends ItemView {
         };
 
         arrowEl.addEventListener("click", (e) => { e.stopPropagation(); toggle(); });
-        nameEl.addEventListener("click", (e) => { e.stopPropagation(); void this.plugin.openKeywordView(item); });
+        nameEl.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.setActiveItem("tag", item.keyword);
+            void this.plugin.openKeywordView(item);
+        });
         parentEl.querySelector(".keyword-list-item-icon")?.addEventListener("click", (e) => {
             e.stopPropagation();
+            this.setActiveItem("tag", item.keyword);
             void this.plugin.openKeywordView(item);
         });
 
@@ -180,6 +207,7 @@ export class KeywordListView extends ItemView {
 
         // Node row (with arrow)
         const itemEl = wrapperEl.createDiv({ cls: "keyword-list-subtag-item keyword-list-subtag-item--branch" });
+        this.markActive(itemEl, "tag", node.fullPath);
         const arrowEl = itemEl.createSpan({
             cls: `keyword-list-subtag-arrow ${isExpanded ? "is-expanded" : ""}`
         });
@@ -206,6 +234,7 @@ export class KeywordListView extends ItemView {
         // Click name: open this node (including all sub-tags underneath)
         nameEl.addEventListener("click", (e) => {
             e.stopPropagation();
+            this.setActiveItem("tag", node.fullPath);
             void this.plugin.openSubTagView(node.fullPath, true);
         });
 
@@ -217,11 +246,13 @@ export class KeywordListView extends ItemView {
     /** Render leaf node (no children, direct click to open) */
     private renderLeafNode(node: TagTreeNode, containerEl: HTMLElement): void {
         const itemEl = containerEl.createDiv({ cls: "keyword-list-subtag-item" });
+        this.markActive(itemEl, "tag", node.fullPath);
         const nameEl = itemEl.createSpan({ cls: "keyword-list-subtag-name" });
         nameEl.setText(node.name);
         nameEl.setAttribute("title", `#${node.fullPath}`);
 
         itemEl.addEventListener("click", () => {
+            this.setActiveItem("tag", node.fullPath);
             void this.plugin.openSubTagView(node.fullPath, false);
         });
     }
@@ -236,12 +267,20 @@ export class KeywordListView extends ItemView {
 
         if (type === "folder") {
             const folder = item as FolderConfig;
+            this.markActive(itemEl, "folder", folder.path);
             if (folder.path !== folder.alias) itemEl.setAttribute("title", folder.path);
+        } else {
+            this.markActive(itemEl, "tag", (item as KeywordConfig).keyword);
         }
 
         itemEl.addEventListener("click", () => {
-            if (type === "keyword") void this.plugin.openKeywordView(item as KeywordConfig);
-            else void this.plugin.openFolderView(item as FolderConfig);
+            if (type === "keyword") {
+                this.setActiveItem("tag", (item as KeywordConfig).keyword);
+                void this.plugin.openKeywordView(item as KeywordConfig);
+            } else {
+                this.setActiveItem("folder", (item as FolderConfig).path);
+                void this.plugin.openFolderView(item as FolderConfig);
+            }
         });
     }
 }
