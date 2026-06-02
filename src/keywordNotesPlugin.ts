@@ -59,6 +59,18 @@ export default class KeywordNotesPlugin extends Plugin {
             (leaf: WorkspaceLeaf) => (this.keywordListView = new KeywordListView(leaf, this))
         );
 
+        this.addRibbonIcon("list", "Open keyword list", () => {
+            void this.activateKeywordListView();
+        });
+
+        this.addCommand({
+            id: "open-keyword-list",
+            name: "Open keyword list",
+            callback: () => {
+                void this.activateKeywordListView();
+            },
+        });
+
         this.initCssRules();
 
         // Open keyword list sidebar by default

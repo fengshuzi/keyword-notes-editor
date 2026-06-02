@@ -25,6 +25,7 @@
 │  KeywordNotesPlugin (main.ts)                       │
 │  ├── registerView(KEYWORD_NOTE_VIEW_TYPE)           │
 │  ├── registerView(KEYWORD_LIST_VIEW_TYPE)           │
+│  ├── addRibbonIcon / addCommand                      │
 │  ├── patchWorkspace()   ← monkey-patch Workspace    │
 │  ├── patchWorkspaceLeaf() ← monkey-patch Leaf       │
 │  └── openKeywordView / openFolderView / ...         │
@@ -255,6 +256,15 @@ ai
 - 点击中间层 `ai/opencode` → `openSubTagView("ai/opencode", true)`，包含更深层子标签，标题显示 `#ai/opencode`。
 - 点击叶子层 `ai/opencode/工具` → `openSubTagView("ai/opencode/工具", false)`，只匹配该完整标签，标题显示 `#ai/opencode/工具`。
 - 所有层级点击都必须走安全复用逻辑，不能新建多个主 view。
+
+### 关键词列表入口
+
+插件启用后必须始终注册打开关键词列表的入口：
+
+- Ribbon icon: `addRibbonIcon("list", "Open keyword list", ...)`
+- Command palette: `addCommand({ id: "open-keyword-list", name: "Open keyword list", ... })`
+
+`openKeywordListOnStartup` 只控制启动时是否自动打开 `KeywordListView`。它不能控制按钮/命令是否存在；否则关闭自动打开后，用户就没有入口打开关键词列表。
 
 ---
 
