@@ -136,10 +136,10 @@ export class KeywordListView extends ItemView {
         };
 
         arrowEl.addEventListener("click", (e) => { e.stopPropagation(); toggle(); });
-        nameEl.addEventListener("click", (e) => { e.stopPropagation(); this.plugin.openKeywordView(item); });
+        nameEl.addEventListener("click", (e) => { e.stopPropagation(); void this.plugin.openKeywordView(item); });
         parentEl.querySelector(".keyword-list-item-icon")?.addEventListener("click", (e) => {
             e.stopPropagation();
-            this.plugin.openKeywordView(item);
+            void this.plugin.openKeywordView(item);
         });
 
         if (isExpanded) {
@@ -206,7 +206,7 @@ export class KeywordListView extends ItemView {
         // Click name: open this node (including all sub-tags underneath)
         nameEl.addEventListener("click", (e) => {
             e.stopPropagation();
-            this.plugin.openSubTagView(node.fullPath, true);
+            void this.plugin.openSubTagView(node.fullPath, true);
         });
 
         if (isExpanded) {
@@ -222,7 +222,7 @@ export class KeywordListView extends ItemView {
         nameEl.setAttribute("title", `#${node.fullPath}`);
 
         itemEl.addEventListener("click", () => {
-            this.plugin.openSubTagView(node.fullPath, false);
+            void this.plugin.openSubTagView(node.fullPath, false);
         });
     }
 
@@ -240,8 +240,8 @@ export class KeywordListView extends ItemView {
         }
 
         itemEl.addEventListener("click", () => {
-            if (type === "keyword") this.plugin.openKeywordView(item as KeywordConfig);
-            else this.plugin.openFolderView(item as FolderConfig);
+            if (type === "keyword") void this.plugin.openKeywordView(item as KeywordConfig);
+            else void this.plugin.openFolderView(item as FolderConfig);
         });
     }
 }

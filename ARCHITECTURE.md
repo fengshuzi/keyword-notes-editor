@@ -9,7 +9,7 @@
 
 1. [整体架构](#1-整体架构)
 2. [视图生命周期](#2-视图生命周期)
-3. [Leaf 复用规则（重要）](#3-leaf-复用规则重要)
+3. [Leaf 复用规则与标题状态（重要）](#3-leaf-复用规则与标题状态重要)
 4. [Svelte 组件树与响应式](#4-svelte-组件树与响应式)
 5. [Monkey-Patch 说明](#5-monkey-patch-说明)
 6. [CSS 作用域隔离](#6-css-作用域隔离)
@@ -105,7 +105,7 @@ spawnLeafView(plugin, initiatingEl, leaf)
 
 ---
 
-## 3. Leaf 复用规则（重要）
+## 3. Leaf 复用规则与标题状态（重要）
 
 > ⚠️ **这是最容易出错的点。修改任何 `open*View` 方法前必读。**
 
@@ -117,30 +117,95 @@ Obsidian 对**同类型 view** 连续调用 `getLeaf(true)` + `setViewState` 行
 - 视图不切换，点击无响应
 - workspace 布局异常
 
+另一个常见坑是 Obsidian 1.7.2+ 的 deferred leaf：
+
+- `workspace.getLeavesOfType(KEYWORD_NOTE_VIEW_TYPE)` 可能返回一个类型正确但尚未加载的 leaf。
+- 这时 `leaf.view` 可能是 DeferredView 或旧 layout 恢复过程中的临时对象，不一定是 `KeywordNoteView`。
+- 不能直接 `const view = leaf.view as KeywordNoteView` 后调用 `view.setSelectionMode()`，否则会出现 `setSelectionMode is not a function`。
+
+还有一个由 leaf 复用引入的标题状态问题：
+
+- 一级关键词会调用 `setKeywordDisplay(keyword)`，标题显示配置的 `icon + alias`，例如 `🍉 读书`。
+- 二级/三级标签通过 `openSubTagView("ai/opencode/工具")` 打开，不会调用 `setKeywordDisplay()`。
+- 如果复用同一个 view 时不清理旧的 `keywordDisplay` / `folderDisplay`，内容已切换到 `ai/opencode/工具`，但标题仍会显示上一次的 `读书`。
+
 ### 正确做法
 
 所有 `open*View` 方法（`openKeywordView`、`openSubTagView`、`openFolderView`、`openTagView`）
-必须遵循**复用优先**模式：
+必须遵循**安全复用优先**模式：
 
 ```typescript
-async openKeywordView(keyword: KeywordConfig) {
-    const existingLeaves = workspace.getLeavesOfType(KEYWORD_NOTE_VIEW_TYPE);
+private isKeywordNoteView(view: unknown): view is KeywordNoteView {
+    return view instanceof KeywordNoteView && typeof view.setSelectionMode === "function";
+}
 
-    if (existingLeaves.length > 0) {
-        // ✅ 复用已有 leaf，更新 target + refresh
-        const leaf = existingLeaves[0];
-        const view = leaf.view as KeywordNoteView;
-        view.setSelectionMode("tag", target);
-        view.setKeywordDisplay(keyword);
-        view.refresh();
-        workspace.revealLeaf(leaf);
-        return;
+private async getOrCreateKeywordNoteView(): Promise<{ leaf: WorkspaceLeaf; view: KeywordNoteView }> {
+    const leaves = this.app.workspace.getLeavesOfType(KEYWORD_NOTE_VIEW_TYPE);
+
+    for (const leaf of leaves) {
+        await leaf.loadIfDeferred();
+
+        if (this.isKeywordNoteView(leaf.view)) {
+            return { leaf, view: leaf.view };
+        }
+
+        await leaf.setViewState({ type: KEYWORD_NOTE_VIEW_TYPE });
+        await leaf.loadIfDeferred();
+
+        if (this.isKeywordNoteView(leaf.view)) {
+            return { leaf, view: leaf.view };
+        }
     }
 
-    // 只在不存在任何 KEYWORD_NOTE_VIEW_TYPE leaf 时才创建新的
-    const leaf = workspace.getLeaf(true);
+    // 只在没有任何可恢复的 KEYWORD_NOTE_VIEW_TYPE leaf 时才创建新的
+    const leaf = this.app.workspace.getLeaf(true);
     await leaf.setViewState({ type: KEYWORD_NOTE_VIEW_TYPE });
-    // ... setSelectionMode etc.
+    await leaf.loadIfDeferred();
+
+    if (!this.isKeywordNoteView(leaf.view)) {
+        throw new Error("Keyword Notes Editor: failed to create keyword note view.");
+    }
+
+    return { leaf, view: leaf.view };
+}
+```
+
+打开一级关键词：
+
+```typescript
+const { leaf, view } = await this.getOrCreateKeywordNoteView();
+
+view.setSelectionMode("tag", target);
+view.setTimeField("mtime");
+view.setIncludeSubTags(true);
+view.setKeywordDisplay(keyword); // 一级关键词覆盖为 alias/icon 标题
+view.refresh();
+workspace.revealLeaf(leaf);
+```
+
+打开二级/三级/更多级子标签：
+
+```typescript
+const { leaf, view } = await this.getOrCreateKeywordNoteView();
+
+view.setSelectionMode("tag", "ai/opencode/工具");
+view.setTimeField("mtime");
+view.setIncludeSubTags(false);
+view.refresh();
+workspace.revealLeaf(leaf);
+```
+
+`KeywordNoteView.setSelectionMode()` 必须同步清理旧标题状态：
+
+```typescript
+setSelectionMode(mode: "folder" | "tag", target: string = "") {
+    this.selectionMode = mode;
+    this.target = target;
+    this.keywordDisplay = null;
+    this.folderDisplay = null;
+
+    this.view?.$set({ selectionMode: mode, target });
+    this.leaf.updateHeader();
 }
 ```
 
@@ -148,6 +213,48 @@ async openKeywordView(keyword: KeywordConfig) {
 - ❌ 按 target 精确匹配查找 → 找不到就 `getLeaf(true)` 创建新的
 - ❌ 每次 open 都 `getLeaf(true)` 创建新 leaf/tab
 - ❌ 依赖 `getLeaf(true)` 返回全新 leaf（Obsidian 不保证）
+- ❌ 未 `loadIfDeferred()` 就直接把 `leaf.view` 强转为 `KeywordNoteView`
+- ❌ 切换 tag/folder 时保留旧的 `keywordDisplay` / `folderDisplay`
+
+### 标题显示规则
+
+`KeywordNoteView.getDisplayText()` 的优先级：
+
+1. 一级关键词：显示 `icon + alias`，例如 `🍇 ai`
+2. 文件夹：显示 `icon + alias`
+3. 子标签：显示完整 tag path，例如 `#ai/opencode/工具`
+4. 空状态：显示 `关键词笔记`
+
+这个顺序不要随意调整。一级关键词需要友好别名；二级/三级/更多级子标签必须显示完整路径，否则复用 view 后用户无法判断当前实际 target。
+
+### 多级关键词树
+
+`KeywordListView` 支持任意层级的 tag path，不限制为二级。
+
+示例：
+
+```text
+#ai/opencode/工具
+#ai/opencode/插件
+#ai/playwright
+```
+
+侧边栏树应渲染为：
+
+```text
+ai
+├── opencode
+│   ├── 工具
+│   └── 插件
+└── playwright
+```
+
+行为规则：
+
+- 点击一级配置关键词 `ai` → `openKeywordView()`，`includeSubTags=true`，标题显示 `🍇 ai`。
+- 点击中间层 `ai/opencode` → `openSubTagView("ai/opencode", true)`，包含更深层子标签，标题显示 `#ai/opencode`。
+- 点击叶子层 `ai/opencode/工具` → `openSubTagView("ai/opencode/工具", false)`，只匹配该完整标签，标题显示 `#ai/opencode/工具`。
+- 所有层级点击都必须走安全复用逻辑，不能新建多个主 view。
 
 ---
 

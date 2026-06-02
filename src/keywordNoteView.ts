@@ -68,7 +68,7 @@ export class KeywordNoteView extends ItemView {
             return `${this.folderDisplay.icon} ${this.folderDisplay.alias}`;
         }
         if (this.selectionMode === "tag" && this.target) {
-            return `Tag: ${this.target}`;
+            return `#${this.target}`;
         }
         if (this.selectionMode === "folder") {
             return `文件夹: ${this.target}`;
@@ -119,6 +119,8 @@ export class KeywordNoteView extends ItemView {
     setSelectionMode(mode: "folder" | "tag", target: string = "") {
         this.selectionMode = mode;
         this.target = target;
+        this.keywordDisplay = null;
+        this.folderDisplay = null;
 
         if (this.view) {
             this.view.$set({
@@ -126,6 +128,8 @@ export class KeywordNoteView extends ItemView {
                 target: target,
             });
         }
+
+        this.leaf.updateHeader();
     }
 
     setIncludeSubTags(value: boolean) {
@@ -387,4 +391,3 @@ class CustomRangeModal extends Modal {
         this.contentEl.empty();
     }
 }
-
