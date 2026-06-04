@@ -1,8 +1,9 @@
 import { TFile, moment, App, getAllTags } from "obsidian";
-import { TimeRange, TimeField } from "../types/time";
+import type { CachedMetadata, ListItemCache, TagCache } from "obsidian";
+import { OverviewTarget, TimeRange, TimeField } from "../types/time";
 
 export interface FileManagerOptions {
-    mode: "folder" | "tag";
+    mode: "folder" | "tag" | "overview";
     target?: string;
     timeRange?: TimeRange;
     customRange?: { start: Date; end: Date } | null;
@@ -12,6 +13,8 @@ export interface FileManagerOptions {
     includeSubTags?: boolean;
     /** 扫描时排除的文件夹路径列表（如 ["journals"]）*/
     excludedFolders?: string[];
+    /** Journal folders used by the Today overview */
+    journalFolders?: string[];
 }
 
 export class FileManager {
@@ -96,6 +99,9 @@ export class FileManager {
             case "tag":
                 this.fetchTaggedFiles();
                 break;
+            case "overview":
+                this.fetchOverviewFiles();
+                break;
         }
 
         this.hasFetched = true;
@@ -165,6 +171,136 @@ export class FileManager {
             this.allFiles,
             this.options.timeField
         );
+    }
+
+    private fetchOverviewFiles(): void {
+        if (!this.options.app) return;
+
+        const target = this.options.target as OverviewTarget | undefined;
+        if (target === "today") {
+            this.fetchTodayFiles();
+        } else if (target === "tasks") {
+            this.fetchTaskFiles();
+        } else if (target === "read-later") {
+            this.fetchReadLaterFiles();
+        } else if (target === "important-urgent") {
+            this.fetchImportantUrgentFiles();
+        }
+    }
+
+    private fetchTodayFiles(): void {
+        if (!this.options.app) return;
+
+        const journalFiles: TFile[] = [];
+        const changedTodayFiles: TFile[] = [];
+
+        for (const file of this.options.app.vault.getMarkdownFiles()) {
+            const isJournalToday = this.isJournalFile(file) && this.isTodayJournalFile(file);
+            const isChangedToday = this.isTodayTimestamp(file.stat.ctime) || this.isTodayTimestamp(file.stat.mtime);
+
+            if (isJournalToday) {
+                journalFiles.push(file);
+            } else if (isChangedToday) {
+                changedTodayFiles.push(file);
+            }
+        }
+
+        this.allFiles = [
+            ...this.sortFilesByTimeField(journalFiles, this.options.timeField),
+            ...this.sortFilesByTimeField(changedTodayFiles, this.options.timeField),
+        ];
+    }
+
+    private fetchTaskFiles(): void {
+        if (!this.options.app) return;
+
+        this.allFiles = this.options.app.vault.getMarkdownFiles().filter((file) => {
+            const cache = this.options.app?.metadataCache.getFileCache(file);
+            return cache?.listItems?.some(item => item.task === " ") ?? false;
+        });
+
+        this.allFiles = this.sortFilesByTimeField(
+            this.allFiles,
+            this.options.timeField
+        );
+    }
+
+    private fetchReadLaterFiles(): void {
+        if (!this.options.app) return;
+
+        this.allFiles = this.options.app.vault.getMarkdownFiles().filter((file) => {
+            const cache = this.options.app?.metadataCache.getFileCache(file);
+            return this.hasIncompleteTaskWithTag(cache, "#ril");
+        });
+
+        this.allFiles = this.sortFilesByTimeField(
+            this.allFiles,
+            this.options.timeField
+        );
+    }
+
+    private fetchImportantUrgentFiles(): void {
+        if (!this.options.app) return;
+
+        this.allFiles = this.options.app.vault.getMarkdownFiles().filter((file) => {
+            const cache = this.options.app?.metadataCache.getFileCache(file);
+            return this.hasIncompleteTaskWithTag(cache, "#p1");
+        });
+
+        this.allFiles = this.sortFilesByTimeField(
+            this.allFiles,
+            this.options.timeField
+        );
+    }
+
+    private hasIncompleteTaskWithTag(cache: CachedMetadata | null | undefined, tag: string): boolean {
+        if (!cache?.listItems || !cache.tags) return false;
+        const normalizedTag = tag.toLowerCase();
+        const tags = cache.tags.filter(item => item.tag.toLowerCase() === normalizedTag);
+        if (tags.length === 0) return false;
+
+        return cache.listItems.some(item => item.task === " " && this.listItemContainsTag(item, tags));
+    }
+
+    private listItemContainsTag(item: ListItemCache, tags: TagCache[]): boolean {
+        const startLine = item.position.start.line;
+        const endLine = item.position.end.line;
+        return tags.some(tag => {
+            const tagLine = tag.position.start.line;
+            return tagLine >= startLine && tagLine <= endLine;
+        });
+    }
+
+    private isTodayTimestamp(timestamp: number): boolean {
+        return moment(timestamp).isSame(moment(), "day");
+    }
+
+    private isJournalFile(file: TFile): boolean {
+        const folderPath = file.parent?.path || "";
+        const journalFolders = this.options.journalFolders && this.options.journalFolders.length > 0
+            ? this.options.journalFolders
+            : ["journals"];
+
+        return journalFolders.some(folder => {
+            const normalized = folder.trim().replace(/^\/+|\/+$/g, "");
+            if (!normalized) return false;
+            return folderPath === normalized || folderPath.startsWith(normalized + "/");
+        });
+    }
+
+    private isTodayJournalFile(file: TFile): boolean {
+        if (this.isTodayTimestamp(file.stat.ctime) || this.isTodayTimestamp(file.stat.mtime)) {
+            return true;
+        }
+
+        const today = moment();
+        const candidates = [
+            today.format("YYYY-MM-DD"),
+            today.format("YYYYMMDD"),
+            today.format("YYYY_MM_DD"),
+            today.format("YYYY.MM.DD"),
+        ];
+        return candidates.some(token => file.basename.includes(token) || file.path.includes(token));
     }
 
     private filterFilesByRange(): void {
@@ -262,11 +398,14 @@ export class FileManager {
             }
         } else if (this.options.mode === "tag") {
             this.handleTaggedFileCreate(file);
+        } else if (this.options.mode === "overview") {
+            this.forceRefresh();
         }
     }
 
     private handleTaggedFileCreate(file: TFile): void {
         if (!this.options.target || !this.options.app) return;
+        if (this.isExcluded(file)) return;
 
         const targetTags = this.options.target
             .split("+")
@@ -321,15 +460,23 @@ export class FileManager {
     public updateOptions(options: Partial<FileManagerOptions>): void {
         this.options = { ...this.options, ...options };
 
-        if (options.timeRange || options.customRange) {
-            this.filterFilesByRange();
-        }
-
-        if (options.mode || options.target) {
+        if (
+            options.mode ||
+            options.target ||
+            options.includeSubTags !== undefined ||
+            options.excludedFolders !== undefined ||
+            options.journalFolders !== undefined
+        ) {
             this.allFiles = [];
             this.filteredFiles = [];
             this.hasFetched = false;
             this.fetchFiles();
+        } else if (options.timeRange || options.customRange || options.timeField) {
+            this.allFiles = this.sortFilesByTimeField(
+                this.allFiles,
+                this.options.timeField
+            );
+            this.filterFilesByRange();
         }
     }
 

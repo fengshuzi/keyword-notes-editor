@@ -278,6 +278,34 @@ body.keyword-notes-hide-backlinks .keyword-note-view .embedded-backlinks {
     opacity: 0.9;
 }
 
+.keyword-list-overview-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.keyword-list-overview-icon svg {
+    width: 18px;
+    height: 18px;
+    stroke-width: 2.2;
+}
+
+.keyword-list-overview-icon--today {
+    color: #5b9be7;
+}
+
+.keyword-list-overview-icon--important-urgent {
+    color: #ff7a1a;
+}
+
+.keyword-list-overview-icon--tasks {
+    color: #ff5f65;
+}
+
+.keyword-list-overview-icon--read-later {
+    color: #ff7a1a;
+}
+
 .keyword-list-item-name {
     flex: 1;
     overflow: hidden;
@@ -306,6 +334,41 @@ body.keyword-notes-hide-backlinks .keyword-note-view .embedded-backlinks {
 .keyword-list-tree-wrapper {
     display: flex;
     flex-direction: column;
+    margin-top: 12px;
+}
+
+.keyword-list-tree-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 10px 8px 10px;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: var(--font-ui-medium);
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    transition: color 0.12s ease;
+}
+
+.keyword-list-tree-title:hover {
+    color: var(--text-normal);
+}
+
+.keyword-list-tree-title.is-collapsed {
+    color: var(--text-muted);
+}
+
+.keyword-list-tree-title-icon {
+    width: 1.4em;
+    text-align: center;
+    flex-shrink: 0;
+    font-size: var(--font-ui-medium);
+}
+
+.keyword-list-tree-title-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* 折叠箭头：SVG 三角，旋转动画 */

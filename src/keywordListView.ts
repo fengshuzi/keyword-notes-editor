@@ -1,6 +1,7 @@
-import { ItemView, WorkspaceLeaf } from "obsidian";
+import { ItemView, WorkspaceLeaf, Menu, setIcon } from "obsidian";
 import type KeywordNotesPlugin from "./keywordNotesPlugin";
 import type { KeywordConfig, FolderConfig } from "./keywordNoteSettings";
+import type { OverviewTarget, SelectionMode } from "./types/time";
 
 export const KEYWORD_LIST_VIEW_TYPE = "keyword-list-view";
 
@@ -72,11 +73,11 @@ export class KeywordListView extends ItemView {
         if (this.listEl) this.renderList();
     }
 
-    private makeActiveKey(type: "folder" | "tag", target: string): string {
+    private makeActiveKey(type: SelectionMode, target: string): string {
         return `${type}:${target}`;
     }
 
-    private setActiveItem(type: "folder" | "tag", target: string): void {
+    private setActiveItem(type: SelectionMode, target: string): void {
         this.activeKey = this.makeActiveKey(type, target);
         this.listEl
             ?.querySelectorAll(".is-active")
@@ -86,10 +87,26 @@ export class KeywordListView extends ItemView {
             ?.addClass("is-active");
     }
 
-    private markActive(el: HTMLElement, type: "folder" | "tag", target: string): void {
+    private markActive(el: HTMLElement, type: SelectionMode, target: string): void {
         const key = this.makeActiveKey(type, target);
         el.dataset.keywordTarget = key;
         el.toggleClass("is-active", this.activeKey === key);
+    }
+
+    private showNewPageMenu(e: MouseEvent, keyword: string): void {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const menu = new Menu();
+        menu.addItem((menuItem) => {
+            menuItem
+                .setTitle("New page with keyword")
+                .setIcon("plus")
+                .onClick(() => {
+                    void this.plugin.createPageWithKeyword(keyword);
+                });
+        });
+        menu.showAtMouseEvent(e);
     }
 
     // ── Top-level list rendering ────────────────────────────────────────────
@@ -98,6 +115,8 @@ export class KeywordListView extends ItemView {
         this.listEl.empty();
 
         const { keywords, folders } = this.plugin.settings;
+
+        this.renderOverviewSection();
 
         keywords.forEach((item) => {
             const subTags = this.plugin.getSubTagsForKeyword(item.keyword);
@@ -114,7 +133,7 @@ export class KeywordListView extends ItemView {
 
         if (keywords.length === 0 && folders.length === 0) {
             const emptyEl = this.listEl.createDiv({ cls: "keyword-list-empty" });
-            emptyEl.createSpan({ text: "No configuration" });
+            emptyEl.createSpan({ text: "No keyword or folder configuration" });
             emptyEl.createEl("br");
             emptyEl.createSpan({
                 text: "Add keywords or folders in plugin settings",
@@ -123,24 +142,47 @@ export class KeywordListView extends ItemView {
         }
     }
 
+    private renderOverviewSection(): void {
+        this.renderOverviewItem("today", "今天", "calendar-days", "keyword-list-overview-icon--today");
+        this.renderOverviewItem("important-urgent", "重要且紧急", "flame", "keyword-list-overview-icon--important-urgent");
+        this.renderOverviewItem("tasks", "待办事项", "circle-check-big", "keyword-list-overview-icon--tasks");
+        this.renderOverviewItem("read-later", "稍后读", "book-open-check", "keyword-list-overview-icon--read-later");
+    }
+
+    private renderOverviewItem(
+        target: OverviewTarget,
+        label: string,
+        icon: string,
+        iconClass: string
+    ): void {
+        const itemEl = this.listEl.createDiv({ cls: "keyword-list-item keyword-list-overview-item" });
+        this.markActive(itemEl, "overview", target);
+        const iconEl = itemEl.createSpan({ cls: `keyword-list-item-icon keyword-list-overview-icon ${iconClass}` });
+        setIcon(iconEl, icon);
+        const nameEl = itemEl.createSpan({ cls: "keyword-list-item-name" });
+        nameEl.setText(label);
+
+        itemEl.addEventListener("click", () => {
+            this.setActiveItem("overview", target);
+            void this.plugin.openOverviewView(target);
+        });
+    }
+
     // ── Top-level keyword node with sub-tag tree ──────────────────────────────
 
-    private renderKeywordWithTree(item: KeywordConfig, subTags: string[]): void {
+    private renderKeywordWithTree(item: KeywordConfig, subTags: string[], containerEl: HTMLElement = this.listEl): void {
         const tree = buildTagTree(subTags, item.keyword);
         const stateKey = `kw:${item.keyword}`;
-        const isExpanded = this.expandedStates.get(stateKey) ?? false;
+        const isExpanded = this.expandedStates.get(stateKey) ?? true;
 
-        const wrapperEl = this.listEl.createDiv({ cls: "keyword-list-tree-wrapper" });
+        const wrapperEl = containerEl.createDiv({ cls: "keyword-list-tree-wrapper" });
 
-        // Parent node row
-        const parentEl = wrapperEl.createDiv({ cls: "keyword-list-item keyword-list-item--parent" });
-        this.markActive(parentEl, "tag", item.keyword);
-        const arrowEl = parentEl.createSpan({
-            cls: `keyword-list-item-arrow ${isExpanded ? "is-expanded" : ""}`
+        const titleEl = wrapperEl.createDiv({
+            cls: `keyword-list-tree-title ${isExpanded ? "is-expanded" : "is-collapsed"}`
         });
-        parentEl.createSpan({ text: item.icon, cls: "keyword-list-item-icon" });
-        const nameEl = parentEl.createSpan({ cls: "keyword-list-item-name" });
-        nameEl.setText(item.alias);
+        titleEl.dataset.keywordTarget = this.makeActiveKey("tag", item.keyword);
+        titleEl.createSpan({ text: item.icon, cls: "keyword-list-tree-title-icon" });
+        titleEl.createSpan({ text: item.alias, cls: "keyword-list-tree-title-name" });
 
         // First-level subtree container
         const subListEl = wrapperEl.createDiv({
@@ -148,26 +190,18 @@ export class KeywordListView extends ItemView {
         });
 
         const toggle = () => {
-            const now = !this.expandedStates.get(stateKey);
+            const now = !(this.expandedStates.get(stateKey) ?? true);
             this.expandedStates.set(stateKey, now);
-            arrowEl.toggleClass("is-expanded", now);
+            titleEl.toggleClass("is-expanded", now);
+            titleEl.toggleClass("is-collapsed", !now);
             subListEl.toggleClass("is-expanded", now);
             if (now && subListEl.childElementCount === 0) {
                 this.renderTreeNodes(tree, subListEl, item.keyword);
             }
         };
 
-        arrowEl.addEventListener("click", (e) => { e.stopPropagation(); toggle(); });
-        nameEl.addEventListener("click", (e) => {
-            e.stopPropagation();
-            this.setActiveItem("tag", item.keyword);
-            void this.plugin.openKeywordView(item);
-        });
-        parentEl.querySelector(".keyword-list-item-icon")?.addEventListener("click", (e) => {
-            e.stopPropagation();
-            this.setActiveItem("tag", item.keyword);
-            void this.plugin.openKeywordView(item);
-        });
+        titleEl.addEventListener("click", toggle);
+        titleEl.addEventListener("contextmenu", (e) => this.showNewPageMenu(e, item.keyword));
 
         if (isExpanded) {
             this.renderTreeNodes(tree, subListEl, item.keyword);
@@ -238,6 +272,8 @@ export class KeywordListView extends ItemView {
             void this.plugin.openSubTagView(node.fullPath, true);
         });
 
+        itemEl.addEventListener("contextmenu", (e) => this.showNewPageMenu(e, node.fullPath));
+
         if (isExpanded) {
             this.renderTreeNodes(node.children, childrenEl, node.fullPath);
         }
@@ -255,12 +291,14 @@ export class KeywordListView extends ItemView {
             this.setActiveItem("tag", node.fullPath);
             void this.plugin.openSubTagView(node.fullPath, false);
         });
+
+        itemEl.addEventListener("contextmenu", (e) => this.showNewPageMenu(e, node.fullPath));
     }
 
     // ── Regular item (keyword without sub-tags / folder) ───────────────────────
 
-    private renderItem(item: KeywordConfig | FolderConfig, type: "keyword" | "folder"): void {
-        const itemEl = this.listEl.createDiv({ cls: "keyword-list-item" });
+    private renderItem(item: KeywordConfig | FolderConfig, type: "keyword" | "folder", containerEl: HTMLElement = this.listEl): void {
+        const itemEl = containerEl.createDiv({ cls: "keyword-list-item" });
         itemEl.createSpan({ text: item.icon, cls: "keyword-list-item-icon" });
         const nameEl = itemEl.createSpan({ cls: "keyword-list-item-name" });
         nameEl.setText(item.alias);
@@ -282,5 +320,12 @@ export class KeywordListView extends ItemView {
                 void this.plugin.openFolderView(item as FolderConfig);
             }
         });
+
+        if (type === "keyword") {
+            itemEl.addEventListener("contextmenu", (e) => {
+                const keyword = (item as KeywordConfig).keyword;
+                this.showNewPageMenu(e, keyword);
+            });
+        }
     }
 }

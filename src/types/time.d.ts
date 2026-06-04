@@ -10,7 +10,9 @@ export type TimeRange =
     | "last-quarter"
     | "custom";
 
-export type SelectionMode = "folder" | "tag";
+export type SelectionMode = "folder" | "tag" | "overview";
+
+export type OverviewTarget = "today" | "tasks" | "read-later" | "important-urgent";
 
 export type TimeField =
     | "ctime"

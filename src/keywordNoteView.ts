@@ -12,7 +12,7 @@ import {
     ButtonComponent,
     Setting,
 } from "obsidian";
-import { TimeRange, TimeField } from "./types/time";
+import { OverviewTarget, SelectionMode, TimeRange, TimeField } from "./types/time";
 import KeywordNoteEditorView from "./component/KeywordNoteEditorView.svelte";
 import type { KeywordConfig, FolderConfig } from "./keywordNoteSettings";
 
@@ -29,7 +29,7 @@ export class KeywordNoteView extends ItemView {
     scope: Scope;
 
     selectedDaysRange: TimeRange = "all";
-    selectionMode: "folder" | "tag" = "tag";
+    selectionMode: SelectionMode = "tag";
     target: string = "";
     timeField: TimeField = "mtime";
     includeSubTags: boolean = false;
@@ -39,6 +39,8 @@ export class KeywordNoteView extends ItemView {
     
     // 文件夹显示配置
     folderDisplay: FolderConfig | null = null;
+
+    overviewDisplay: { target: OverviewTarget; alias: string; icon: string } | null = null;
 
     customRange: {
         start: Date;
@@ -67,11 +69,20 @@ export class KeywordNoteView extends ItemView {
         if (this.folderDisplay) {
             return `${this.folderDisplay.icon} ${this.folderDisplay.alias}`;
         }
+        if (this.overviewDisplay) {
+            return `${this.overviewDisplay.icon} ${this.overviewDisplay.alias}`;
+        }
         if (this.selectionMode === "tag" && this.target) {
             return `#${this.target}`;
         }
         if (this.selectionMode === "folder") {
             return `文件夹: ${this.target}`;
+        }
+        if (this.selectionMode === "overview") {
+            if (this.target === "important-urgent") return "重要且紧急";
+            if (this.target === "tasks") return "待办事项";
+            if (this.target === "read-later") return "稍后读";
+            return "今天";
         }
         return "关键词笔记";
     }
@@ -84,6 +95,7 @@ export class KeywordNoteView extends ItemView {
     setKeywordDisplay(keyword: KeywordConfig) {
         this.keywordDisplay = keyword;
         this.folderDisplay = null;
+        this.overviewDisplay = null;
         this.leaf.updateHeader();
     }
     
@@ -91,6 +103,22 @@ export class KeywordNoteView extends ItemView {
     setFolderDisplay(folder: FolderConfig) {
         this.folderDisplay = folder;
         this.keywordDisplay = null;
+        this.overviewDisplay = null;
+        this.leaf.updateHeader();
+    }
+
+    setOverviewDisplay(target: OverviewTarget) {
+        if (target === "important-urgent") {
+            this.overviewDisplay = { target, alias: "重要且紧急", icon: "🔥" };
+        } else if (target === "tasks") {
+            this.overviewDisplay = { target, alias: "待办事项", icon: "☑️" };
+        } else if (target === "read-later") {
+            this.overviewDisplay = { target, alias: "稍后读", icon: "📖" };
+        } else {
+            this.overviewDisplay = { target, alias: "今天", icon: "📅" };
+        }
+        this.keywordDisplay = null;
+        this.folderDisplay = null;
         this.leaf.updateHeader();
     }
 
@@ -100,6 +128,11 @@ export class KeywordNoteView extends ItemView {
 
     onFileDelete = (file: TAbstractFile) => {
         if (file instanceof TFile) this.view.fileDelete(file);
+    };
+
+    onFileRename = (file: TAbstractFile, oldPath: string) => {
+        void oldPath;
+        if (file instanceof TFile) this.view.fileRename();
     };
 
     setSelectedRange(range: TimeRange) {
@@ -116,11 +149,12 @@ export class KeywordNoteView extends ItemView {
         }
     }
 
-    setSelectionMode(mode: "folder" | "tag", target: string = "") {
+    setSelectionMode(mode: SelectionMode, target: string = "") {
         this.selectionMode = mode;
         this.target = target;
         this.keywordDisplay = null;
         this.folderDisplay = null;
+        this.overviewDisplay = null;
 
         if (this.view) {
             this.view.$set({
@@ -166,7 +200,7 @@ export class KeywordNoteView extends ItemView {
         // Restore workspace state (e.g. after Obsidian restart)
         if (state && typeof state === "object") {
             const customState = state as {
-                selectionMode?: "folder" | "tag";
+                selectionMode?: SelectionMode;
                 target?: string;
                 timeField?: TimeField;
                 selectedRange?: TimeRange;
@@ -184,6 +218,17 @@ export class KeywordNoteView extends ItemView {
                 this.customRange = customState.customRange;
             if (customState.includeSubTags !== undefined)
                 this.includeSubTags = customState.includeSubTags;
+            if (
+                this.selectionMode === "overview" &&
+                (
+                    this.target === "today" ||
+                    this.target === "important-urgent" ||
+                    this.target === "tasks" ||
+                    this.target === "read-later"
+                )
+            ) {
+                this.setOverviewDisplay(this.target);
+            }
 
             // View is created in onOpen(); update its props if already mounted
             if (this.view) {
@@ -284,8 +329,9 @@ export class KeywordNoteView extends ItemView {
             }
         });
 
-        this.app.vault.on("create", this.onFileCreate);
-        this.app.vault.on("delete", this.onFileDelete);
+        this.registerEvent(this.app.vault.on("create", this.onFileCreate));
+        this.registerEvent(this.app.vault.on("delete", this.onFileDelete));
+        this.registerEvent(this.app.vault.on("rename", this.onFileRename));
 
         // Create Svelte view here so it exists regardless of how the view is opened
         if (!this.view) {

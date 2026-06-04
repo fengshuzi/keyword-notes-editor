@@ -1,7 +1,7 @@
 <script lang="ts">
     import type KeywordNotesPlugin from "../keywordNotesPlugin";
-    import { MarkdownView, TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
-    import { spawnLeafView } from "../leafView";
+    import { MarkdownView, Menu, TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
+    import { KeywordNoteEditor, spawnLeafView } from "../leafView";
     import { onDestroy, onMount } from "svelte";
 
     export let file: TAbstractFile;
@@ -10,6 +10,9 @@
     export let shouldRender: boolean = true;
     export let collapseAll: boolean | null = null;
     export let onIndividualToggle: (() => void) | null = null;
+    export let onDeleteNote: ((file: TFile) => Promise<void>) | null = null;
+    export let isPinned: boolean = false;
+    export let onTogglePinned: ((file: TFile, pinned: boolean) => Promise<void>) | null = null;
 
     let editorEl: HTMLElement;
     let containerEl: HTMLElement;
@@ -17,11 +20,15 @@
 
     let rendered: boolean = false;
 
-    let createdLeaf: WorkspaceLeaf;
+    let createdLeaf: WorkspaceLeaf | null = null;
+    let createdEditor: KeywordNoteEditor | null = null;
     let unloadTimeout: number | null = null;
     let editorHeight: number = 100;
     
     let isDestroying = false;
+    let isDeleting = false;
+    let isSelected = false;
+    let keepSelectedOnNextBlur = false;
     let isCollapsed: boolean = false;
     let hasReadableLineWidth: boolean = false;
 
@@ -60,7 +67,7 @@
         try {
             const fileName = file instanceof TFile ? file.basename : "unknown";
             
-            [createdLeaf] = spawnLeafView(plugin, editorEl, leaf);
+            [createdLeaf, createdEditor] = spawnLeafView(plugin, editorEl, leaf);
             createdLeaf.setPinned(true);
 
             createdLeaf.setViewState({
@@ -124,16 +131,17 @@
         
         try {
             const fileName = file instanceof TFile ? file.basename : "unknown";
+            void fileName;
             
-            if (createdLeaf.detach) {
+            if (createdEditor) {
+                createdEditor.hide();
+            } else if (createdLeaf.detach) {
                 createdLeaf.detach();
             }
             
-            if (editorEl) {
-                editorEl.empty();
-            }
-            
             rendered = false;
+            createdLeaf = null;
+            createdEditor = null;
         } catch (error) {
             console.error("Error unloading editor:", error);
         }
@@ -145,15 +153,33 @@
         plugin.app.workspace.openLinkText(fileToOpen.path, fileToOpen.path, false);
     }
 
-    function handleCollapseClick() {
-        toggleCollapse();
-    }
-
     function handleEditorClick() {
+        selectNote();
         const editor = (createdLeaf?.view as unknown as { editMode?: { editor?: { hasFocus: () => boolean; focus: () => void } } })?.editMode?.editor;
         if (editor && !editor.hasFocus()) {
             editor.focus();
         }
+    }
+
+    function selectNote() {
+        isSelected = true;
+    }
+
+    function handleFocusIn() {
+        selectNote();
+    }
+
+    function handleFocusOut(event: FocusEvent) {
+        if (keepSelectedOnNextBlur) {
+            window.setTimeout(() => {
+                keepSelectedOnNextBlur = false;
+            }, 0);
+            return;
+        }
+
+        const nextTarget = event.relatedTarget;
+        if (nextTarget instanceof Node && containerEl?.contains(nextTarget)) return;
+        isSelected = false;
     }
     
     $: displayedCollapsed = collapseAll !== null ? collapseAll : isCollapsed;
@@ -168,17 +194,113 @@
         }
         isCollapsed = !displayedCollapsed;
     }
+
+    function setCollapsed(nextCollapsed: boolean) {
+        if (collapseAll !== null && onIndividualToggle) {
+            onIndividualToggle();
+        }
+        isCollapsed = nextCollapsed;
+    }
+
+    function handleCollapseContextMenu(event: MouseEvent) {
+        event.preventDefault();
+        event.stopPropagation();
+        keepSelectedOnNextBlur = true;
+        selectNote();
+
+        const menu = new Menu();
+        menu.addItem((item) => {
+            item
+                .setTitle(displayedCollapsed ? "展开笔记" : "折叠笔记")
+                .setIcon(displayedCollapsed ? "chevron-down" : "chevron-right")
+                .onClick(() => setCollapsed(!displayedCollapsed));
+        });
+        menu.addItem((item) => {
+            item
+                .setTitle(isPinned ? "取消置顶" : "置顶笔记")
+                .setIcon("pin")
+                .setChecked(isPinned)
+                .onClick(() => {
+                    void handleTogglePinned();
+                });
+        });
+        menu.addSeparator();
+        menu.addItem((item) => {
+            item
+                .setTitle(isDeleting ? "正在删除..." : "删除笔记")
+                .setIcon("trash")
+                .setWarning(true)
+                .setDisabled(isDeleting)
+                .onClick(() => {
+                    void handleDelete();
+                });
+        });
+        menu.showAtMouseEvent(event);
+    }
+
+    function handleDotMouseDown(event: MouseEvent) {
+        selectNote();
+        if (event.button === 2) {
+            keepSelectedOnNextBlur = true;
+            event.preventDefault();
+            event.stopPropagation();
+        }
+    }
+
+    async function handleDelete() {
+        if (!(file instanceof TFile)) return;
+        if (isDeleting) return;
+
+        isDeleting = true;
+        try {
+            if (onDeleteNote) {
+                await onDeleteNote(file);
+            } else {
+                await plugin.app.vault.trash(file, false);
+            }
+        } catch (error) {
+            isDeleting = false;
+            console.error("Keyword Notes Editor: failed to delete note", error);
+        }
+    }
+
+    async function handleTogglePinned() {
+        if (!(file instanceof TFile)) return;
+        if (!onTogglePinned) return;
+
+        try {
+            await onTogglePinned(file, !isPinned);
+        } catch (error) {
+            console.error("Keyword Notes Editor: failed to update pinned note", error);
+        }
+    }
 </script>
 
-<div class="keyword-note-container" class:is-collapsed={displayedCollapsed} class:has-readable-line-width={hasReadableLineWidth} data-id='kw-editor-{file.path}' bind:this={containerEl} style="min-height: {displayedCollapsed ? 'auto' : editorHeight + 'px'};">
+<div
+    class="keyword-note-container"
+    class:is-collapsed={displayedCollapsed}
+    class:is-pinned={isPinned}
+    class:is-selected={isSelected}
+    class:has-readable-line-width={hasReadableLineWidth}
+    data-id='kw-editor-{file.path}'
+    bind:this={containerEl}
+    style="min-height: {displayedCollapsed ? 'auto' : editorHeight + 'px'};"
+    on:focusin={handleFocusIn}
+    on:focusout={handleFocusOut}
+>
     <div class="keyword-note">
         {#if title}
             <div class="keyword-note-title inline-title">
                 <!-- svelte-ignore a11y-interactive-supports-focus -->
                 <!-- svelte-ignore a11y-click-events-have-key-events -->
-                <span role="button" data-collapsed={displayedCollapsed} class="collapse-button" on:click={handleCollapseClick} title={displayedCollapsed ? "展开" : "折叠"}>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down"><path d="m6 9 6 6 6-6"/></svg>
-                </span>
+                <span
+                    role="button"
+                    data-collapsed={displayedCollapsed}
+                    class="agenda-dot-button"
+                    on:mousedown={handleDotMouseDown}
+                    on:click={toggleCollapse}
+                    on:contextmenu={handleCollapseContextMenu}
+                ></span>
                 <!-- svelte-ignore a11y-interactive-supports-focus -->
                 <!-- svelte-ignore a11y-click-events-have-key-events -->
                 <span role="link" class="clickable-link" on:click={handleFileIconClick} data-title={title}>{title}</span>
@@ -210,6 +332,37 @@
         padding-bottom: var(--size-4-8);
     }
 
+    .keyword-note-container {
+        --kw-note-card-accent: #ffb000;
+        border: 1px solid transparent;
+        border-radius: 10px;
+        transition: background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+    }
+
+    .keyword-note-container.is-selected,
+    .keyword-note-container:focus-within {
+        background:
+            linear-gradient(
+                180deg,
+                color-mix(in srgb, var(--kw-note-card-accent) 7%, var(--background-primary)) 0%,
+                color-mix(in srgb, var(--kw-note-card-accent) 4%, var(--background-primary)) 100%
+            );
+        border-color: color-mix(in srgb, var(--kw-note-card-accent) 58%, var(--background-modifier-border));
+        box-shadow:
+            0 1px 0 color-mix(in srgb, var(--kw-note-card-accent) 18%, transparent),
+            0 10px 28px color-mix(in srgb, var(--kw-note-card-accent) 8%, transparent);
+    }
+
+    .keyword-note-container.is-selected .keyword-note,
+    .keyword-note-container:focus-within .keyword-note {
+        padding: var(--size-4-3) var(--size-4-3) var(--size-4-6);
+    }
+
+    .keyword-note-container.is-selected .keyword-note-title,
+    .keyword-note-container:focus-within .keyword-note-title {
+        margin-top: 0;
+    }
+
     .is-collapsed .keyword-note {
         margin-bottom: 0;
         padding-bottom: 0;
@@ -223,22 +376,6 @@
         display: none;
     }
 
-    .keyword-note .collapse-button {
-        display: none;
-    }
-
-    .keyword-note:hover .collapse-button {
-        display: block;
-    }
-
-    .keyword-note .collapse-button {
-        color: var(--text-muted);
-    }
-
-    .keyword-note .collapse-button:hover  {
-        color: var(--text-normal);
-    }
-
     .has-readable-line-width .keyword-note-title {
         display: flex;
         align-items: center;
@@ -246,16 +383,6 @@
         margin-bottom: var(--size-4-8);
         padding-left: var(--size-4-4);
         gap: var(--size-4-2);
-    }
-
-    .collapse-button {
-        margin-left: 0;
-    }
-
-    .collapse-button[data-collapsed="true"] {
-        transform: rotate(-90deg);
-
-        transition: transform 0.2s ease;
     }
 
     .keyword-note-container:not(.has-readable-line-width) .keyword-note-title {
@@ -268,6 +395,68 @@
         gap: var(--size-4-2);
     }
 
+    .agenda-dot-button {
+        --kw-note-dot-color: #ffb000;
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        margin-left: 0;
+        border-radius: 999px;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+
+    .agenda-dot-button::before {
+        content: "";
+        width: 13px;
+        height: 13px;
+        border: 2px solid var(--kw-note-dot-color);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--kw-note-dot-color) 16%, transparent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--kw-note-dot-color) 12%, transparent);
+        transition: transform 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease;
+    }
+
+    .agenda-dot-button::after {
+        content: "";
+        position: absolute;
+        width: 5px;
+        height: 5px;
+        border-radius: 999px;
+        background: var(--kw-note-dot-color);
+        transition: opacity 0.16s ease, transform 0.16s ease;
+    }
+
+    .agenda-dot-button[data-collapsed="true"]::before {
+        background: transparent;
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--kw-note-dot-color) 10%, transparent);
+    }
+
+    .agenda-dot-button[data-collapsed="true"]::after {
+        opacity: 0;
+        transform: scale(0.4);
+    }
+
+    .is-pinned .agenda-dot-button::before {
+        background: color-mix(in srgb, var(--kw-note-dot-color) 32%, transparent);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--kw-note-dot-color) 16%, transparent);
+    }
+
+    .is-pinned .clickable-link::after {
+        content: "置顶";
+        margin-left: var(--size-2-3);
+        padding: 1px 6px;
+        border-radius: 999px;
+        color: var(--kw-note-dot-color);
+        background: color-mix(in srgb, var(--kw-note-dot-color) 12%, transparent);
+        font-size: var(--font-ui-smaller);
+        font-weight: 500;
+        vertical-align: middle;
+    }
+
     .clickable-link {
         cursor: pointer;
         text-decoration: none;
@@ -277,7 +466,7 @@
         color: var(--color-accent);
         text-decoration: underline;
     }
-    
+
     .editor-placeholder {
         display: flex;
         justify-content: center;
@@ -287,19 +476,4 @@
         font-style: italic;
     }
     
-    .collapse-button {
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 24px;
-        height: 24px;
-        border-radius: 4px;
-        color: var(--text-muted);
-        transition: background-color 0.2s ease;
-    }
-    
-    .collapse-button:hover {
-        color: var(--text-normal);
-    }
 </style>

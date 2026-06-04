@@ -34,10 +34,16 @@ export interface KeywordNoteEditorParent {
 
 const popovers = new WeakMap<Element, KeywordNoteEditor>();
 type ConstructableWorkspaceSplit = new (ws: Workspace, dir: "horizontal" | "vertical") => WorkspaceSplit;
+type WorkspaceLeafWithNullableParent = WorkspaceLeaf & { parent?: WorkspaceItem | null };
+type WorkspaceSplitWithNullableChildren = WorkspaceSplit & { children?: WorkspaceItem[] | null };
 
 export function isKeywordNoteLeaf(leaf: WorkspaceLeaf) {
-    // Work around missing enhance.js API by checking match condition instead of looking up parent
+    if ((leaf as any).__keywordNoteEmbedded) return true;
     return leaf.containerEl.matches(".kw-editor.kw-leaf-view .workspace-leaf");
+}
+
+function isLeafAttached(leaf: WorkspaceLeaf): boolean {
+    return Boolean((leaf as WorkspaceLeafWithNullableParent).parent);
 }
 
 function nosuper<T>(base: new (...args: unknown[]) => T): new () => T {
@@ -67,6 +73,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
     lockedOut: boolean;
     abortController? = this.addChild(new Component());
     detaching = false;
+    detachScheduled = false;
     opening = false;
 
     rootSplit: WorkspaceSplit = new (WorkspaceSplit as ConstructableWorkspaceSplit)((window as unknown as { app: { workspace: Workspace } }).app.workspace, "vertical");
@@ -132,7 +139,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
         KeywordNoteEditor._iteratingPopovers = true;
         try {
             for (const popover of this.activePopovers()) {
-                if (popover.rootSplit && ws.iterateLeaves(cb, popover.rootSplit)) return true;
+                if (popover.hasRootChildren() && ws.iterateLeaves(cb, popover.rootSplit)) return true;
             }
         } finally {
             KeywordNoteEditor._iteratingPopovers = false;
@@ -186,7 +193,10 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
     _setActive(evt: MouseEvent) {
         evt.preventDefault();
         evt.stopPropagation();
-        this.plugin.app.workspace.setActiveLeaf(this.leaves()[0], {focus: true});
+        const leaf = this.leaves()[0];
+        if (leaf) {
+            this.plugin.app.workspace.setActiveLeaf(leaf, {focus: true});
+        }
     }
 
     getDefaultMode() {
@@ -195,14 +205,11 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
     }
 
     updateLeaves() {
-        if (this.onTarget && this.targetEl && !this.document.contains(this.targetEl)) {
+        if (!this.detaching && this.onTarget && this.targetEl && !this.document.contains(this.targetEl)) {
             this.onTarget = false;
             this.transition();
         }
-        let leafCount = 0;
-        this.plugin.app.workspace.iterateLeaves(leaf => { void leaf;
-            leafCount++;
-        }, this.rootSplit);
+        const leafCount = this.leaves().length;
 
         if (leafCount === 0) {
             this.hide(); // close if we have no leaves
@@ -212,10 +219,21 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
 
     leaves() {
         const leaves: WorkspaceLeaf[] = [];
-        this.plugin.app.workspace.iterateLeaves(leaf => {
-            leaves.push(leaf);
-        }, this.rootSplit);
+        if (!this.hasRootChildren()) return leaves;
+
+        try {
+            this.plugin.app.workspace.iterateLeaves(leaf => {
+                leaves.push(leaf);
+            }, this.rootSplit);
+        } catch (error) {
+            console.warn("Keyword Notes Editor: failed to iterate embedded leaves", error);
+        }
         return leaves;
+    }
+
+    hasRootChildren(): boolean {
+        const children = (this.rootSplit as WorkspaceSplitWithNullableChildren).children;
+        return Array.isArray(children) && children.length > 0;
     }
 
     setInitialDimensions() {
@@ -262,6 +280,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
 
         this.titleEl.insertAdjacentElement("afterend", this.rootSplit.containerEl);
         const leaf = this.plugin.app.workspace.createLeafInParent(this.rootSplit, 0);
+        (leaf as any).__keywordNoteEmbedded = true;
 
         this.updateLeaves();
         return leaf;
@@ -272,7 +291,8 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
         this.registerEvent(this.plugin.app.workspace.on("layout-change", this.updateLeaves, this));
         this.registerEvent(this.plugin.app.workspace.on("layout-change", () => {
             // Ensure that top-level items in a popover are not tabbed
-            ((this.rootSplit as unknown as { children: WorkspaceItem[] }).children as WorkspaceItem[]).forEach((item, index) => {
+            const children = (this.rootSplit as unknown as { children?: WorkspaceItem[] | null }).children ?? [];
+            children.forEach((item, index) => {
                 if (item instanceof WorkspaceTabs) {
                     this.rootSplit.replaceChild(index, (item as unknown as { children: WorkspaceItem[] }).children[0]);
                 }
@@ -386,6 +406,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
     }
 
     hide() {
+        if (this.state === PopoverState.Hidden) return;
         this.onTarget = false;
         this.detaching = true;
         // Once we reach this point, we're committed to closing
@@ -412,14 +433,9 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
         if (this.opening) return;
 
         // Leave this code here to observe the state of the leaves
-        const leaves = this.leaves();
-        if (leaves.length) {
-            // Detach all leaves before we unload the popover and remove it from the DOM.
-            // Each leaf.detach() will trigger layout-changed and the updateLeaves()
-            // method will then call hide() again when the last one is gone.
-            // leaves[0].detach();
-            leaves[0].detach();
-            // this.targetEl.empty();
+        const leafToDetach = this.leaves().find(isLeafAttached);
+        if (leafToDetach) {
+            this.scheduleLeafDetach(leafToDetach);
         } else {
             this.parent = null;
             this.abortController?.unload();
@@ -428,7 +444,26 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
         }
     }
 
+    scheduleLeafDetach(leaf: WorkspaceLeaf): void {
+        if (this.detachScheduled) return;
+        this.detachScheduled = true;
+
+        window.setTimeout(() => {
+            try {
+                if (isLeafAttached(leaf)) {
+                    leaf.detach();
+                } else {
+                    this.nativeHide();
+                }
+            } catch (error) {
+                console.warn("Keyword Notes Editor: failed to detach embedded leaf", error);
+                this.nativeHide();
+            }
+        }, 50);
+    }
+
     nativeHide() {
+        if (this.state === PopoverState.Hidden) return;
         const {hoverEl, targetEl} = this;
         this.state = PopoverState.Hidden;
         hoverEl.detach();

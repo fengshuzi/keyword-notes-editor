@@ -6,7 +6,7 @@
     import KeywordNote from "./KeywordNote.svelte";
     import { inview } from "svelte-inview";
     import { TimeRange, SelectionMode, TimeField } from "../types/time";
-    import { onMount } from "svelte";
+    import { onMount, tick } from "svelte";
     import { FileManager, FileManagerOptions } from "../utils/fileManager";
 
 
@@ -27,13 +27,18 @@
     
     // Track which notes are in viewport
     let visibleNotes: Set<string> = new Set();
+    let deletingPaths: Set<string> = new Set();
+    let pinnedPaths: Set<string> = new Set();
 
     let hasMore = true;
     let firstLoaded = true;
     let loaderRef: HTMLDivElement;
+    let resetVersion = 0;
 
     // Create the file manager
     let fileManager: FileManager;
+
+    $: pinnedScopeKey = plugin.getPinnedScopeKey(selectionMode, target, includeSubTags);
     
     $: fileManagerOptions = {
         mode: selectionMode,
@@ -43,7 +48,8 @@
         app: plugin.app,
         timeField: timeField,
         includeSubTags: includeSubTags,
-        excludedFolders: selectionMode === "tag" ? (plugin.settings.excludedFolders || []) : []
+        excludedFolders: selectionMode === "tag" ? (plugin.settings.excludedFolders || []) : [],
+        journalFolders: plugin.settings.journalFolders || ["journals"]
     } as FileManagerOptions;
 
     $: if (fileManager && (selectedRange !== fileManager.options.timeRange || 
@@ -59,31 +65,40 @@
             target: target,
             timeField: timeField,
             includeSubTags: includeSubTags,
-            excludedFolders: selectionMode === "tag" ? (plugin.settings.excludedFolders || []) : []
+            excludedFolders: selectionMode === "tag" ? (plugin.settings.excludedFolders || []) : [],
+            journalFolders: plugin.settings.journalFolders || ["journals"]
         });
         
-        // Reset rendered files and start filling viewport again
-        renderedFiles = [];
-        visibleNotes.clear();
-        filteredFiles = fileManager.getFilteredFiles();
-        hasMore = filteredFiles.length > 0;
-        firstLoaded = true;
-        startFillViewport();
+        void resetRenderedFiles();
     }
 
     onMount(() => {
         fileManager = new FileManager(fileManagerOptions);
-        filteredFiles = fileManager.getFilteredFiles();
-        hasMore = filteredFiles.length > 0;
-        startFillViewport();
+        void resetRenderedFiles();
     });
 
     export function refresh() {
         if (!fileManager) return;
+        plugin.prunePinnedNotes(pinnedScopeKey);
         fileManager.forceRefresh();
+        void resetRenderedFiles();
+    }
+
+    async function resetRenderedFiles() {
+        const version = ++resetVersion;
         renderedFiles = [];
-        visibleNotes.clear();
-        filteredFiles = fileManager.getFilteredFiles();
+        filteredFiles = [];
+        visibleNotes = new Set();
+        hasMore = false;
+        firstLoaded = true;
+
+        // Give Svelte a DOM turn to destroy old embedded editor leaves before new notes mount.
+        await tick();
+        await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+        if (version !== resetVersion) return;
+
+        syncPinnedPaths();
+        filteredFiles = getScopedFilteredFiles();
         hasMore = filteredFiles.length > 0;
         firstLoaded = true;
         startFillViewport();
@@ -115,7 +130,14 @@
         if (!loaderRef || !filteredFiles.length || !hasMore) return;
         const startIndex = renderedFiles.length;
         const endIndex = Math.min(startIndex + 10, filteredFiles.length);
-        renderedFiles = [...renderedFiles, ...filteredFiles.slice(startIndex, endIndex)];
+        const newFiles = filteredFiles.slice(startIndex, endIndex);
+        renderedFiles = [...renderedFiles, ...newFiles];
+        if (startIndex === 0) {
+            for (const f of newFiles) {
+                visibleNotes.add(f.path);
+            }
+            visibleNotes = visibleNotes;
+        }
         if (endIndex >= filteredFiles.length) {
             hasMore = false;
         }
@@ -131,30 +153,114 @@
         }
     }
 
+    function updateHasMore() {
+        hasMore = renderedFiles.length < filteredFiles.length;
+    }
+
+    function syncPinnedPaths() {
+        pinnedPaths = new Set(plugin.getPinnedNotePaths(pinnedScopeKey));
+    }
+
+    function applyPinnedOrder(files: TFile[]): TFile[] {
+        if (pinnedPaths.size === 0) return files;
+
+        const order = new Map([...pinnedPaths].map((path, index) => [path, index]));
+        return [...files].sort((a, b) => {
+            const aIndex = order.get(a.path);
+            const bIndex = order.get(b.path);
+
+            if (aIndex !== undefined && bIndex !== undefined) {
+                return aIndex - bIndex;
+            }
+            if (aIndex !== undefined) return -1;
+            if (bIndex !== undefined) return 1;
+            return files.indexOf(a) - files.indexOf(b);
+        });
+    }
+
+    function getScopedFilteredFiles(): TFile[] {
+        return applyPinnedOrder(fileManager.getFilteredFiles());
+    }
+
+    function pruneVisibleNotes() {
+        const renderedPaths = new Set(renderedFiles.map((f) => f.path));
+        visibleNotes = new Set([...visibleNotes].filter((path) => renderedPaths.has(path)));
+    }
+
+    async function deleteNote(file: TFile) {
+        if (deletingPaths.has(file.path)) return;
+        deletingPaths.add(file.path);
+        plugin.removePinnedNotePath(file.path);
+        syncPinnedPaths();
+
+        filteredFiles = filteredFiles.filter((f) => f.path !== file.path);
+        renderedFiles = renderedFiles.filter((f) => f.path !== file.path);
+        pruneVisibleNotes();
+        updateHasMore();
+
+        // Let Svelte destroy the embedded editor leaf before Obsidian deletes the file.
+        await tick();
+
+        try {
+            await plugin.app.vault.trash(file, false);
+        } catch (error) {
+            deletingPaths.delete(file.path);
+            refresh();
+            throw error;
+        }
+    }
+
     export function fileCreate(file: TFile) {
+        const loadedCount = renderedFiles.length;
         fileManager.fileCreate(file);
+        syncPinnedPaths();
+        filteredFiles = getScopedFilteredFiles();
         
-        // For folder and tag modes, update the rendered files
-        const updatedFiles = fileManager.getFilteredFiles();
-        if (updatedFiles.some(f => f.path === file.path) && 
-            !renderedFiles.some(f => f.path === file.path)) {
-            renderedFiles = [file, ...renderedFiles];
+        const newIndex = filteredFiles.findIndex((f) => f.path === file.path);
+        if (newIndex >= 0 && newIndex <= loadedCount) {
+            renderedFiles = filteredFiles.slice(0, Math.min(loadedCount + 1, filteredFiles.length));
             visibleNotes.add(file.path);
             visibleNotes = visibleNotes;
         }
+        updateHasMore();
     }
 
     export function fileDelete(file: TFile) {
         fileManager.fileDelete(file);
+        deletingPaths.delete(file.path);
+        plugin.removePinnedNotePath(file.path);
+        syncPinnedPaths();
+        filteredFiles = getScopedFilteredFiles();
         
         renderedFiles = renderedFiles.filter((f) => {
             return f.path !== file.path;
         });
+        pruneVisibleNotes();
         
         if (visibleNotes.has(file.path)) {
             visibleNotes.delete(file.path);
             visibleNotes = visibleNotes;
         }
+        updateHasMore();
+    }
+
+    export function fileRename() {
+        refresh();
+    }
+
+    async function togglePinned(file: TFile, pinned: boolean) {
+        await plugin.setNotePinned(pinnedScopeKey, file, pinned);
+        syncPinnedPaths();
+
+        const loadedCount = Math.max(renderedFiles.length, 1);
+        filteredFiles = getScopedFilteredFiles();
+        renderedFiles = filteredFiles.slice(0, Math.min(loadedCount, filteredFiles.length));
+        pruneVisibleNotes();
+        if (renderedFiles.some((f) => f.path === file.path)) {
+            visibleNotes.add(file.path);
+            visibleNotes = visibleNotes;
+        }
+        updateHasMore();
     }
     
     function handleNoteVisibilityChange(file: TFile, isVisible: boolean) {
@@ -188,6 +294,9 @@
                 shouldRender={visibleNotes.has(file.path)}
                 collapseAll={collapseAll}
                 onIndividualToggle={clearCollapseAll}
+                onDeleteNote={deleteNote}
+                isPinned={pinnedPaths.has(file.path)}
+                onTogglePinned={togglePinned}
             />
         </div>
     {/each}

@@ -36,6 +36,15 @@ export interface KeywordNotesSettings {
 
     /** Folders to exclude from keyword scanning (e.g. journals) */
     excludedFolders: string[];
+
+    /** Folder path for new pages created from keyword right-click menu */
+    newPageFolder: string;
+
+    /** Journal folders used by the Today overview */
+    journalFolders: string[];
+
+    /** Pinned note paths grouped by keyword/folder view scope */
+    pinnedNotes: Record<string, string[]>;
 }
 
 // Fruit icon list (shared by keywords and folders)
@@ -51,6 +60,9 @@ export const DEFAULT_SETTINGS: KeywordNotesSettings = {
     folders: [],
     preset: [],
     excludedFolders: [],
+    newPageFolder: "pages",
+    journalFolders: ["journals"],
+    pinnedNotes: {},
 };
 
 // Parse keyword configuration string (supports aggregation: p1+p2+p3+p4|Quadrant)
@@ -225,6 +237,37 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
             });
 
         new Setting(containerEl).setName("Display Settings").setHeading();
+
+        new Setting(containerEl)
+            .setName("New page folder")
+            .setDesc("Folder path for new pages created from keyword right-click menu. Default: pages")
+            .addText((text) =>
+                text
+                    .setValue(this.plugin.settings.newPageFolder || "pages")
+                    .setPlaceholder("pages")
+                    .onChange((value) => {
+                        this.plugin.settings.newPageFolder = value.trim() || "pages";
+                        this.applySettingsUpdate();
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName("Journal folders")
+            .setDesc("Folders treated as journals in the Today overview. One folder path per line. Default: journals")
+            .addTextArea((text) => {
+                text.inputEl.addClass("kw-settings-textarea-sm");
+                text
+                    .setValue((this.plugin.settings.journalFolders || ["journals"]).join("\n"))
+                    .setPlaceholder("journals")
+                    .onChange((value) => {
+                        const folders = value
+                            .split("\n")
+                            .map(s => s.trim())
+                            .filter(s => s.length > 0);
+                        this.plugin.settings.journalFolders = folders.length > 0 ? folders : ["journals"];
+                        this.applySettingsUpdate();
+                    });
+            });
 
 
         new Setting(containerEl)

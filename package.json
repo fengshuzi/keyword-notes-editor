@@ -1,6 +1,6 @@
 {
 	"name": "keyword-notes-editor",
-	"version": "1.0.4",
+	"version": "1.0.5",
 	"description": "View and edit multiple notes grouped by keyword tags.",
 	"main": "main.js",
 	"scripts": {

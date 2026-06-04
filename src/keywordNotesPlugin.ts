@@ -1,12 +1,17 @@
 import {
     Plugin,
     OpenViewState,
+    TAbstractFile,
     TFile,
+    TextFileView,
     Workspace,
     WorkspaceItem,
     WorkspaceLeaf,
     getAllTags,
+    normalizePath,
+    TFolder,
 } from "obsidian";
+import type { EventRef } from "obsidian";
 
 import { around } from "monkey-around";
 import { KeywordNoteEditor, isKeywordNoteLeaf } from "./leafView";
@@ -19,7 +24,7 @@ import {
     KeywordConfig,
     FolderConfig,
 } from "./keywordNoteSettings";
-import { TimeField } from "./types/time";
+import { OverviewTarget, TimeField } from "./types/time";
 import { createUpDownNavigationExtension } from "./component/UpAndDownNavigate";
 import { KEYWORD_NOTE_VIEW_TYPE, KeywordNoteView } from "./keywordNoteView";
 import { KEYWORD_LIST_VIEW_TYPE, KeywordListView } from "./keywordListView";
@@ -30,6 +35,18 @@ export default class KeywordNotesPlugin extends Plugin {
     lastActiveFile: TFile;
 
     declare settings: KeywordNotesSettings;
+
+    private onVaultDelete = (file: TAbstractFile) => {
+        if (file instanceof TFile) {
+            this.removePinnedNotePath(file.path);
+        }
+    };
+
+    private onVaultRename = (file: TAbstractFile, oldPath: string) => {
+        if (file instanceof TFile) {
+            this.renamePinnedNotePath(oldPath, file.path);
+        }
+    };
     
 
     async onload() {
@@ -37,6 +54,8 @@ export default class KeywordNotesPlugin extends Plugin {
         await this.loadSettings();
         this.patchWorkspace();
         this.patchWorkspaceLeaf();
+        this.patchEmbeddedTextFileUnload();
+        this.registerEmbeddedEditorErrorFilter();
         addIconList();
 
         // Register the up and down navigation extension
@@ -72,6 +91,8 @@ export default class KeywordNotesPlugin extends Plugin {
         });
 
         this.initCssRules();
+        this.registerEvent(this.app.vault.on("delete", this.onVaultDelete));
+        this.registerEvent(this.app.vault.on("rename", this.onVaultRename));
 
         // Open keyword list sidebar by default
         this.app.workspace.onLayoutReady(() => {
@@ -93,8 +114,8 @@ export default class KeywordNotesPlugin extends Plugin {
         let leaf = workspace.getLeavesOfType(KEYWORD_LIST_VIEW_TYPE)[0];
         
         if (!leaf) {
-            // 在左侧边栏创建视图
-            const leftLeaf = workspace.getLeftLeaf(false);
+            // Create a dedicated sidebar leaf instead of reusing another plugin's leaf.
+            const leftLeaf = workspace.getLeftLeaf(true);
             if (leftLeaf) {
                 await leftLeaf.setViewState({
                     type: KEYWORD_LIST_VIEW_TYPE,
@@ -167,7 +188,7 @@ export default class KeywordNotesPlugin extends Plugin {
     // IMPORTANT: 所有 open*View 方法必须复用已有的 KEYWORD_NOTE_VIEW_TYPE leaf，
     // 而非每次 getLeaf(true) 创建新 leaf。原因：Obsidian 对同类型 view 连续调用
     // getLeaf(true) + setViewState 行为不稳定，会导致视图不切换。
-    // 正确做法：找到已有 leaf → 更新 setSelectionMode/refresh → revealLeaf。
+    // 正确做法：找到已有 leaf → 更新查询条件 → 由 Svelte 视图重建列表 → revealLeaf。
 
     // Open keyword view (includes sub-tags by default)
     async openKeywordView(keyword: KeywordConfig) {
@@ -179,7 +200,6 @@ export default class KeywordNotesPlugin extends Plugin {
         view.setTimeField("mtime");
         view.setIncludeSubTags(true);
         view.setKeywordDisplay(keyword);
-        view.refresh();
 
         workspace.revealLeaf(leaf);
     }
@@ -192,7 +212,6 @@ export default class KeywordNotesPlugin extends Plugin {
         view.setSelectionMode("tag", subTag);
         view.setTimeField("mtime");
         view.setIncludeSubTags(includeSubTags);
-        view.refresh();
 
         workspace.revealLeaf(leaf);
     }
@@ -226,7 +245,6 @@ export default class KeywordNotesPlugin extends Plugin {
         view.setSelectionMode("folder", folder.path);
         view.setTimeField("mtime");
         view.setFolderDisplay(folder);
-        view.refresh();
 
         workspace.revealLeaf(leaf);
     }
@@ -237,7 +255,18 @@ export default class KeywordNotesPlugin extends Plugin {
 
         view.setSelectionMode("tag", tagName);
         view.setTimeField(timeField);
-        view.refresh();
+
+        workspace.revealLeaf(leaf);
+    }
+
+    async openOverviewView(target: OverviewTarget) {
+        const workspace = this.app.workspace;
+        const { leaf, view } = await this.getOrCreateKeywordNoteView();
+
+        view.setSelectionMode("overview", target);
+        view.setTimeField("mtime");
+        view.setIncludeSubTags(false);
+        view.setOverviewDisplay(target);
 
         workspace.revealLeaf(leaf);
     }
@@ -317,13 +346,12 @@ export default class KeywordNotesPlugin extends Plugin {
                         cb
                     ) as unknown;
                 },
-            recordMostRecentOpenedFile: (_old: (...args: unknown[]) => unknown) =>
-                function (this: unknown, _file: unknown) { void _file; void _old; },
             setActiveLeaf: (next: (...args: unknown[]) => unknown) =>
                 function (this: unknown, e: unknown, t?: unknown) {
                     const setFn = next as (leaf: WorkspaceLeaf, params?: { focus?: boolean } | boolean) => void;
+                    const workspaceLeaf = e as WorkspaceLeaf;
                     const leaf = e as unknown as { parentLeaf?: WorkspaceLeaf & { activeTime?: number; view?: { editMode?: unknown } } };
-                    if (leaf.parentLeaf) {
+                    if (isKeywordNoteLeaf(workspaceLeaf) && leaf.parentLeaf) {
                         leaf.parentLeaf.activeTime = 1700000000000;
                         setFn.call(this, leaf.parentLeaf, (t as { focus?: boolean }) ?? {});
                         const editMode = ((e as unknown as { view?: { editMode?: unknown } }).view as unknown as { editMode?: unknown })?.editMode;
@@ -348,6 +376,7 @@ export default class KeywordNotesPlugin extends Plugin {
             around(WorkspaceLeaf.prototype, {
                 getRoot(old) {
                     return function () {
+                        if (!isKeywordNoteLeaf(this)) return old.call(this);
                         const top = old.call(this);
                         return top?.getRoot === this.getRoot
                             ? top
@@ -363,43 +392,57 @@ export default class KeywordNotesPlugin extends Plugin {
                 },
                 openFile(old) {
                     return function (file: TFile, openState?: OpenViewState) {
-                        if (isKeywordNoteLeaf(this)) {
-                            setTimeout(
-                                around(Workspace.prototype, {
-                                    recordMostRecentOpenedFile(old) {
-                                        return function (_file: TFile) {
-                                            if (_file !== file) {
-                                                return old.call(this, _file);
-                                            }
-                                        };
-                                    },
-                                }),
-                                1
-                            );
-                            const recentFiles =
-                                this.app.plugins.plugins[
-                                    "recent-files-obsidian"
-                                ];
-                            if (recentFiles)
-                                setTimeout(
-                                    around(recentFiles, {
-                                        shouldAddFile(old) {
-                                            return function (_file: TFile) {
-                                                return (
-                                                    _file !== file &&
-                                                    old.call(this, _file)
-                                                );
-                                            };
-                                        },
-                                    }),
-                                    1
-                                );
-                        }
                         return old.call(this, file, openState);
                     };
                 },
             })
         );
+    }
+
+    private patchEmbeddedTextFileUnload(): void {
+        type OnUnloadFile = (this: TextFileView, file: TFile) => Promise<void>;
+
+        this.register(
+            around(TextFileView.prototype, {
+                onUnloadFile: (old: OnUnloadFile) => {
+                    return async function (this: TextFileView, file: TFile): Promise<void> {
+                        try {
+                            await old.call(this, file);
+                        } catch (error) {
+                            if (KeywordNotesPlugin.isEmbeddedEditorUnloadHistoryError(error)) {
+                                return;
+                            }
+                            throw error;
+                        }
+                    };
+                },
+            })
+        );
+    }
+
+    private registerEmbeddedEditorErrorFilter(): void {
+        const handler = (event: PromiseRejectionEvent) => {
+            if (!KeywordNotesPlugin.isEmbeddedEditorUnloadHistoryError(event.reason)) return;
+            event.preventDefault();
+        };
+
+        window.addEventListener("unhandledrejection", handler);
+        this.register(() => window.removeEventListener("unhandledrejection", handler));
+
+        const origConsoleError = console.error;
+        console.error = (...args: unknown[]) => {
+            if (args.some((a) => KeywordNotesPlugin.isEmbeddedEditorUnloadHistoryError(a))) return;
+            origConsoleError.apply(console, args);
+        };
+        this.register(() => { console.error = origConsoleError; });
+    }
+
+    private static isEmbeddedEditorUnloadHistoryError(reason: unknown): boolean {
+        if (!(reason instanceof RangeError)) return false;
+        if (reason.message !== "Field is not present in this state") return false;
+
+        const stack = typeof reason.stack === "string" ? reason.stack : "";
+        return stack.includes("saveHistory") || stack.includes("beforeUnload");
     }
 
     public async loadSettings() {
@@ -411,6 +454,7 @@ export default class KeywordNotesPlugin extends Plugin {
         
         // Reassign icons to ensure keywords and folders do not have duplicate icons
         this.reassignIcons();
+        this.prunePinnedNotes();
     }
     
     // Reassign icons to avoid duplicates
@@ -449,5 +493,223 @@ export default class KeywordNotesPlugin extends Plugin {
 
     async saveSettings() {
         await this.saveData(this.settings);
+    }
+
+    getPinnedScopeKey(mode: "folder" | "tag" | "overview", target: string, includeSubTags = false): string {
+        if (mode === "overview") {
+            return `overview:${target}`;
+        }
+
+        if (mode === "folder") {
+            const folder = normalizePath(target || "").replace(/^\/+|\/+$/g, "");
+            return `folder:${folder}`;
+        }
+
+        const tagTarget = (target || "")
+            .split("+")
+            .map(tag => tag.trim().replace(/^#/, "").toLowerCase())
+            .filter(Boolean)
+            .join("+");
+        return `tag:${tagTarget}:sub:${includeSubTags ? "1" : "0"}`;
+    }
+
+    getPinnedNotePaths(scopeKey: string): string[] {
+        this.prunePinnedNotes(scopeKey);
+        return [...(this.settings.pinnedNotes?.[scopeKey] ?? [])];
+    }
+
+    isNotePinned(scopeKey: string, file: TFile): boolean {
+        return (this.settings.pinnedNotes?.[scopeKey] ?? []).includes(file.path);
+    }
+
+    async setNotePinned(scopeKey: string, file: TFile, pinned: boolean): Promise<void> {
+        const pinnedNotes = this.settings.pinnedNotes ?? {};
+        const existing = pinnedNotes[scopeKey] ?? [];
+        const withoutCurrent = existing.filter(path => path !== file.path);
+
+        if (pinned) {
+            pinnedNotes[scopeKey] = [file.path, ...withoutCurrent];
+        } else if (withoutCurrent.length > 0) {
+            pinnedNotes[scopeKey] = withoutCurrent;
+        } else {
+            delete pinnedNotes[scopeKey];
+        }
+
+        this.settings.pinnedNotes = pinnedNotes;
+        this.prunePinnedNotes(scopeKey, false);
+        await this.saveSettings();
+    }
+
+    removePinnedNotePath(filePath: string): void {
+        const pinnedNotes = this.settings.pinnedNotes;
+        if (!pinnedNotes) return;
+
+        let changed = false;
+        for (const scopeKey of Object.keys(pinnedNotes)) {
+            const nextPaths = pinnedNotes[scopeKey].filter(path => path !== filePath);
+            if (nextPaths.length !== pinnedNotes[scopeKey].length) {
+                changed = true;
+                if (nextPaths.length > 0) {
+                    pinnedNotes[scopeKey] = nextPaths;
+                } else {
+                    delete pinnedNotes[scopeKey];
+                }
+            }
+        }
+
+        if (changed) {
+            void this.saveSettings();
+        }
+    }
+
+    renamePinnedNotePath(oldPath: string, newPath: string): void {
+        const pinnedNotes = this.settings.pinnedNotes;
+        if (!pinnedNotes) return;
+
+        let changed = false;
+        for (const scopeKey of Object.keys(pinnedNotes)) {
+            const nextPaths = pinnedNotes[scopeKey].map(path => path === oldPath ? newPath : path);
+            if (nextPaths.some((path, index) => path !== pinnedNotes[scopeKey][index])) {
+                changed = true;
+                pinnedNotes[scopeKey] = Array.from(new Set(nextPaths));
+            }
+        }
+
+        if (changed) {
+            this.prunePinnedNotes(undefined, false);
+            void this.saveSettings();
+        }
+    }
+
+    prunePinnedNotes(scopeKey?: string, save = true): boolean {
+        const pinnedNotes = this.settings.pinnedNotes ?? {};
+        const scopeKeys = scopeKey ? [scopeKey] : Object.keys(pinnedNotes);
+        let changed = false;
+
+        for (const key of scopeKeys) {
+            const paths = pinnedNotes[key];
+            if (!paths) continue;
+
+            const existingPaths = paths.filter(path => this.app.vault.getAbstractFileByPath(path) instanceof TFile);
+            if (existingPaths.length !== paths.length) {
+                changed = true;
+                if (existingPaths.length > 0) {
+                    pinnedNotes[key] = existingPaths;
+                } else {
+                    delete pinnedNotes[key];
+                }
+            }
+        }
+
+        this.settings.pinnedNotes = pinnedNotes;
+        if (changed && save) {
+            void this.saveSettings();
+        }
+        return changed;
+    }
+
+    private getTimestampFileStem(date: Date): string {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        const hour = String(date.getHours()).padStart(2, "0");
+        const minute = String(date.getMinutes()).padStart(2, "0");
+        const second = String(date.getSeconds()).padStart(2, "0");
+        const millisecond = String(date.getMilliseconds()).padStart(3, "0");
+        return `${year}${month}${day}${hour}${minute}${second}${millisecond}`;
+    }
+
+    private getNewPageFolder(): string {
+        return normalizePath(this.settings.newPageFolder || "pages").replace(/^\/+|\/+$/g, "");
+    }
+
+    private async ensureFolderExists(folderPath: string): Promise<void> {
+        if (!folderPath) return;
+
+        let currentPath = "";
+        for (const part of folderPath.split("/").filter(Boolean)) {
+            currentPath = currentPath ? `${currentPath}/${part}` : part;
+            const existing = this.app.vault.getAbstractFileByPath(currentPath);
+
+            if (existing instanceof TFolder) continue;
+            if (existing) {
+                throw new Error(`Cannot create folder "${currentPath}" because a file already exists at that path.`);
+            }
+
+            await this.app.vault.createFolder(currentPath);
+        }
+    }
+
+    private getAvailableNewPagePath(folderPath: string, fileStem: string): string {
+        const prefix = folderPath ? `${folderPath}/` : "";
+        let filePath = `${prefix}${fileStem}.md`;
+        let suffix = 1;
+
+        while (this.app.vault.getAbstractFileByPath(filePath)) {
+            filePath = `${prefix}${fileStem}-${suffix}.md`;
+            suffix++;
+        }
+
+        return filePath;
+    }
+
+    private waitForMetadataCache(filePath: string, timeoutMs = 2000): Promise<void> {
+        return new Promise<void>((resolve) => {
+            let done = false;
+            let timer = 0;
+            let ref: EventRef | null = null;
+
+            const finish = () => {
+                if (done) return;
+                done = true;
+                if (timer) window.clearTimeout(timer);
+                if (ref) this.app.metadataCache.offref(ref);
+                resolve();
+            };
+
+            ref = this.app.metadataCache.on("changed", (file: TFile) => {
+                if (file.path === filePath) finish();
+            });
+            timer = window.setTimeout(finish, timeoutMs);
+        });
+    }
+
+    async createPageWithKeyword(tag: string): Promise<void> {
+        const now = new Date();
+        const normalizedTag = tag.trim().replace(/^#/, "");
+        const folder = this.getNewPageFolder();
+        const filePath = this.getAvailableNewPagePath(folder, this.getTimestampFileStem(now));
+        const content = `#${normalizedTag}\n`;
+
+        try {
+            await this.ensureFolderExists(folder);
+            await this.app.vault.create(filePath, content);
+            await this.waitForMetadataCache(filePath);
+            await this.openKeywordViewForTag(normalizedTag);
+        } catch (error) {
+            console.error("Keyword Notes Editor: failed to create page", error);
+        }
+    }
+
+    private async openKeywordViewForTag(tag: string): Promise<void> {
+        const workspace = this.app.workspace;
+        const { leaf, view } = await this.getOrCreateKeywordNoteView();
+        const tagLower = tag.toLowerCase();
+        const rootTag = tagLower.includes("/") ? tagLower.split("/")[0] : tagLower;
+        const keyword = this.settings.keywords.find(k => {
+            if (k.keywords && k.keywords.length > 0) {
+                return k.keywords.some(kw => tagLower === kw || tagLower.startsWith(kw + "/"));
+            }
+            return tagLower === k.keyword || tagLower.startsWith(k.keyword + "/") || rootTag === k.keyword;
+        });
+
+        view.setSelectionMode("tag", tagLower);
+        view.setTimeField("mtime");
+        view.setIncludeSubTags(true);
+        if (keyword) {
+            view.setKeywordDisplay(keyword);
+        }
+
+        workspace.revealLeaf(leaf);
     }
 }
