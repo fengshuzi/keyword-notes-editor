@@ -175,8 +175,6 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
     display(): void {
         const { containerEl } = this;
         containerEl.empty();
-        new Setting(containerEl).setName("General").setHeading();
-
         // Keyword configuration
         new Setting(containerEl).setName("Keyword Configuration").setHeading();
 
