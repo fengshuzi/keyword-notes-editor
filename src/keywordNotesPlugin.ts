@@ -382,9 +382,9 @@ export default class KeywordNotesPlugin extends Plugin {
                     const result = fn.call(this, t as { VIEW_TYPE?: string });
                     if (!result) {
                         if ((t as { VIEW_TYPE?: string })?.VIEW_TYPE === "markdown") {
-                            const activeLeaf = this as unknown as { activeLeaf?: { view?: { editMode?: unknown } } };
-                            if (activeLeaf.activeLeaf?.view instanceof KeywordNoteView) {
-                                return activeLeaf.activeLeaf.view.editMode;
+                            const recentLeaf = (this as Workspace).getMostRecentLeaf();
+                            if (recentLeaf?.view instanceof KeywordNoteView) {
+                                return recentLeaf.view.editMode;
                             } else {
                                 return result;
                             }

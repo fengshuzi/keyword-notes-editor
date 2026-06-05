@@ -49,6 +49,7 @@ export class KeywordNoteView extends ItemView {
     view: KeywordNoteEditorViewInstance;
     plugin: KeywordNotesPlugin;
     scope: Scope;
+    editMode?: unknown;
 
     selectionMode: SelectionMode = "tag";
     target: string = "";
