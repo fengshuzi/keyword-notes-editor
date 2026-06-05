@@ -42,24 +42,6 @@
     padding: 0 !important;
     overflow-y: clip;
 }
-.keyword-note-view .keyword-note-wrapper::before {
-    content: "";
-    display: block;
-    height: 1px;
-    width: var(--file-line-width);
-    margin-bottom: 30px;
-    margin-left: auto;
-    margin-right: auto;
-    background-color: var(--background-modifier-border);
-}
-
-.keyword-note-view .keyword-note-wrapper:first-of-type::before {
-    height: 0px;
-}
-
-.keyword-note-view .kw-range-indicator + .keyword-note-container::before {
-    height: 0px;
-}
 
 .is-popout-window .kw-editor .kw-content {
     margin: 0;
