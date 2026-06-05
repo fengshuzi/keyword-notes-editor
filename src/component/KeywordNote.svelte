@@ -376,16 +376,6 @@
             0 10px 28px color-mix(in srgb, var(--kw-note-card-accent) 8%, transparent);
     }
 
-    .keyword-note-container.is-selected .keyword-note,
-    .keyword-note-container:focus-within .keyword-note {
-        padding: var(--size-4-3) var(--size-4-3) var(--size-4-6);
-    }
-
-    .keyword-note-container.is-selected .keyword-note-title,
-    .keyword-note-container:focus-within .keyword-note-title {
-        margin-top: 0;
-    }
-
     .is-collapsed .keyword-note {
         margin-bottom: 0;
         padding-bottom: 0;
