@@ -1,6 +1,6 @@
 <script lang="ts">
     import type KeywordNotesPlugin from "../keywordNotesPlugin";
-    import { MarkdownView, Menu, TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
+    import { MarkdownRenderer, MarkdownView, Menu, Platform, TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
     import { KeywordNoteEditor, spawnLeafView } from "../leafView";
     import { NOTE_COLORS } from "../keywordNoteSettings";
     import { onDestroy, onMount } from "svelte";
@@ -20,8 +20,11 @@
     export let onSelectNote: ((file: TFile) => void) | null = null;
 
     let editorEl: HTMLElement;
+    let mobilePreviewEl: HTMLElement;
     let containerEl: HTMLElement;
     let title: string;
+    const isMobilePreview = Platform.isMobile && (plugin.settings.mobileNoteMode || "editable") === "preview";
+    let renderedPreviewPath = "";
 
     let rendered: boolean = false;
 
@@ -41,10 +44,15 @@
         }
     });
 
-    $: if (editorEl && shouldRender && !rendered) {
+    $: if (!isMobilePreview && editorEl && shouldRender && !rendered) {
         showEditor();
-    } else if (editorEl && !shouldRender && rendered) {
+    } else if (!isMobilePreview && editorEl && !shouldRender && rendered) {
         scheduleUnload();
+    }
+
+    $: if (isMobilePreview && mobilePreviewEl && shouldRender && file instanceof TFile && renderedPreviewPath !== file.path) {
+        renderedPreviewPath = file.path;
+        void renderMobilePreview(file);
     }
 
     onDestroy(() => {
@@ -56,6 +64,35 @@
             unloadEditor();
         }
     });
+
+    async function renderMobilePreview(fileToRender: TFile) {
+        if (!mobilePreviewEl) return;
+
+        mobilePreviewEl.empty();
+        mobilePreviewEl.createDiv({ text: "Loading...", cls: "editor-placeholder" });
+
+        try {
+            const source = await plugin.app.vault.cachedRead(fileToRender);
+            if (!mobilePreviewEl || renderedPreviewPath !== fileToRender.path) return;
+
+            mobilePreviewEl.empty();
+            await MarkdownRenderer.render(
+                plugin.app,
+                source || "_Empty note_",
+                mobilePreviewEl,
+                fileToRender.path,
+                plugin
+            );
+        } catch (error) {
+            if (!mobilePreviewEl) return;
+            mobilePreviewEl.empty();
+            mobilePreviewEl.createDiv({
+                text: "Failed to render note preview",
+                cls: "editor-placeholder",
+            });
+            console.error("Keyword Notes Editor: failed to render mobile preview", error);
+        }
+    }
 
     function showEditor() {
         if (!(file instanceof TFile)) return;
@@ -288,11 +325,11 @@
     class:is-pinned={isPinned}
     class:is-selected={isSelected}
     class:has-readable-line-width={hasReadableLineWidth}
-    data-id='kw-editor-{file.path}'
-    bind:this={containerEl}
-    style="min-height: {displayedCollapsed ? 'auto' : editorHeight + 'px'}; {noteColorStyle}"
-    on:focusin={handleFocusIn}
->
+        data-id='kw-editor-{file.path}'
+        bind:this={containerEl}
+        style="min-height: {displayedCollapsed || isMobilePreview ? 'auto' : editorHeight + 'px'}; {noteColorStyle}"
+        on:focusin={handleFocusIn}
+    >
     <div class="keyword-note">
         {#if title}
             <div class="keyword-note-title">
@@ -310,23 +347,32 @@
                 <span role="link" class="clickable-link" on:click={handleFileIconClick} data-title={title}>{title}</span>
             </div>
         {/if}
-        <div
-            class="keyword-note-editor"
-            data-collapsed={displayedCollapsed}
-            bind:this={editorEl}
-            data-title={title}
-            role="button"
-            tabindex="0"
-            on:click={handleEditorClick}
-            on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), handleEditorClick())}
-        >
-            {#if !rendered && shouldRender}
-                <div class="editor-placeholder">Loading...</div>
-            {/if}
-            {#if !shouldRender && !rendered}
-                <div class="editor-placeholder">Scroll to view content</div>
-            {/if}
-        </div>
+        {#if isMobilePreview}
+            <div
+                class="keyword-note-mobile-preview markdown-rendered"
+                data-collapsed={displayedCollapsed}
+                bind:this={mobilePreviewEl}
+                data-title={title}
+            ></div>
+        {:else}
+            <div
+                class="keyword-note-editor"
+                data-collapsed={displayedCollapsed}
+                bind:this={editorEl}
+                data-title={title}
+                role="button"
+                tabindex="0"
+                on:click={handleEditorClick}
+                on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), handleEditorClick())}
+            >
+                {#if !rendered && shouldRender}
+                    <div class="editor-placeholder">Loading...</div>
+                {/if}
+                {#if !shouldRender && !rendered}
+                    <div class="editor-placeholder">Scroll to view content</div>
+                {/if}
+            </div>
+        {/if}
     </div>
 </div>
 
@@ -366,6 +412,14 @@
     }
 
     .keyword-note-editor[data-collapsed="true"] {
+        display: none;
+    }
+
+    .keyword-note-mobile-preview {
+        padding: 0 var(--size-4-4) var(--size-4-3);
+    }
+
+    .keyword-note-mobile-preview[data-collapsed="true"] {
         display: none;
     }
 

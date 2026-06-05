@@ -2,7 +2,7 @@
     import type KeywordNotesPlugin from "../keywordNotesPlugin";
     import type { WorkspaceLeaf } from "obsidian";
 
-    import { TFile, moment } from "obsidian";
+    import { Platform, TFile, moment } from "obsidian";
     import KeywordNote from "./KeywordNote.svelte";
     import { inview } from "svelte-inview";
     import { SelectionMode, TimeField } from "../types/time";
@@ -34,6 +34,7 @@
     let firstLoaded = true;
     let loaderRef: HTMLDivElement;
     let resetVersion = 0;
+    let mobileFillTimer: number | null = null;
 
     // Create the file manager
     let fileManager: FileManager;
@@ -80,6 +81,10 @@
 
     async function resetRenderedFiles() {
         const version = ++resetVersion;
+        if (mobileFillTimer) {
+            window.clearTimeout(mobileFillTimer);
+            mobileFillTimer = null;
+        }
         renderedFiles = [];
         filteredFiles = [];
         visibleNotes = new Set();
@@ -125,7 +130,8 @@
     function fillViewport() {
         if (!loaderRef || !filteredFiles.length || !hasMore) return;
         const startIndex = renderedFiles.length;
-        const endIndex = Math.min(startIndex + 10, filteredFiles.length);
+        const batchSize = isMobileEditableMode() ? 1 : 10;
+        const endIndex = Math.min(startIndex + batchSize, filteredFiles.length);
         const newFiles = filteredFiles.slice(startIndex, endIndex);
         renderedFiles = [...renderedFiles, ...newFiles];
         if (startIndex === 0) {
@@ -137,10 +143,33 @@
         if (endIndex >= filteredFiles.length) {
             hasMore = false;
         }
+        scheduleMobileFillIfNeeded();
+    }
+
+    function scheduleMobileFillIfNeeded() {
+        if (!isMobileEditableMode() || !hasMore || !loaderRef || mobileFillTimer) return;
+
+        mobileFillTimer = window.setTimeout(() => {
+            mobileFillTimer = null;
+            if (!loaderRef || !hasMore) return;
+
+            const rect = loaderRef.getBoundingClientRect();
+            const viewportHeight = window.innerHeight || leaf.view.contentEl.clientHeight;
+            if (rect.top < viewportHeight + 200) {
+                fillViewport();
+            }
+        }, 150);
+    }
+
+    function isMobileEditableMode() {
+        return Platform.isMobile && (plugin.settings.mobileNoteMode || "editable") === "editable";
     }
 
     function stopFillViewport() {
-        // no-op: managed by inview directives
+        if (mobileFillTimer) {
+            window.clearTimeout(mobileFillTimer);
+            mobileFillTimer = null;
+        }
     }
 
     function infiniteHandler(e: CustomEvent<{ inView: boolean }>) {

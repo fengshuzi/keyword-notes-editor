@@ -9,6 +9,7 @@ import {
     WorkspaceLeaf,
     getAllTags,
     normalizePath,
+    Platform,
     TFolder,
 } from "obsidian";
 import type { EventRef } from "obsidian";
@@ -144,6 +145,15 @@ export default class KeywordNotesPlugin extends Plugin {
         });
     }
 
+    refreshKeywordNoteViews() {
+        const leaves = this.app.workspace.getLeavesOfType(KEYWORD_NOTE_VIEW_TYPE);
+        leaves.forEach((leaf) => {
+            if (leaf.view instanceof KeywordNoteView) {
+                leaf.view.refresh();
+            }
+        });
+    }
+
 
 
     // Get keyword target (single tag is keyword, aggregation is p1+p2+p3+p4)
@@ -159,6 +169,24 @@ export default class KeywordNotesPlugin extends Plugin {
     }
 
     private async getOrCreateKeywordNoteView(): Promise<{ leaf: WorkspaceLeaf; view: KeywordNoteView }> {
+        if (Platform.isMobile) {
+            const existingLeaves = this.app.workspace.getLeavesOfType(KEYWORD_NOTE_VIEW_TYPE);
+            const leaf = existingLeaves[0] ?? this.app.workspace.getMostRecentLeaf() ?? this.app.workspace.getLeaf(false);
+
+            for (const duplicate of existingLeaves.slice(1)) {
+                duplicate.detach();
+            }
+
+            await leaf.setViewState({ type: KEYWORD_NOTE_VIEW_TYPE });
+            await leaf.loadIfDeferred();
+
+            if (!this.isKeywordNoteView(leaf.view)) {
+                throw new Error("Keyword Notes Editor: failed to create mobile keyword note view.");
+            }
+
+            return { leaf, view: leaf.view };
+        }
+
         const leaves = this.app.workspace.getLeavesOfType(KEYWORD_NOTE_VIEW_TYPE);
 
         for (const leaf of leaves) {
@@ -189,6 +217,41 @@ export default class KeywordNotesPlugin extends Plugin {
         return { leaf, view: leaf.view };
     }
 
+    private async revealKeywordNoteLeaf(leaf: WorkspaceLeaf, view: KeywordNoteView): Promise<void> {
+        const workspace = this.app.workspace;
+
+        if (!Platform.isMobile) {
+            workspace.revealLeaf(leaf);
+            return;
+        }
+
+        workspace.leftSplit?.collapse();
+        workspace.rightSplit?.collapse();
+
+        await workspace.revealLeaf(leaf);
+
+        // Obsidian Mobile can leave a custom view as a blank tab after revealLeaf()
+        // until the user opens the tab switcher. Force the same activation/layout pass.
+        workspace.setActiveLeaf(leaf, { focus: true });
+        workspace.onLayoutChange();
+
+        await new Promise<void>((resolve) => {
+            window.requestAnimationFrame(() => {
+                window.requestAnimationFrame(() => resolve());
+            });
+        });
+
+        workspace.setActiveLeaf(leaf, { focus: true });
+        workspace.onLayoutChange();
+        view.refresh();
+
+        window.setTimeout(() => {
+            workspace.setActiveLeaf(leaf, { focus: true });
+            workspace.onLayoutChange();
+            view.refresh();
+        }, 350);
+    }
+
     // IMPORTANT: 所有 open*View 方法必须复用已有的 KEYWORD_NOTE_VIEW_TYPE leaf，
     // 而非每次 getLeaf(true) 创建新 leaf。原因：Obsidian 对同类型 view 连续调用
     // getLeaf(true) + setViewState 行为不稳定，会导致视图不切换。
@@ -196,7 +259,6 @@ export default class KeywordNotesPlugin extends Plugin {
 
     // Open keyword view (includes sub-tags by default)
     async openKeywordView(keyword: KeywordConfig) {
-        const workspace = this.app.workspace;
         const target = this.getKeywordTarget(keyword);
         const { leaf, view } = await this.getOrCreateKeywordNoteView();
 
@@ -205,19 +267,18 @@ export default class KeywordNotesPlugin extends Plugin {
         view.setIncludeSubTags(true);
         view.setKeywordDisplay(keyword);
 
-        workspace.revealLeaf(leaf);
+        await this.revealKeywordNoteLeaf(leaf, view);
     }
 
     // Open sub-tag view (includeSubTags=true also includes deeper sub-tags)
     async openSubTagView(subTag: string, includeSubTags = false) {
-        const workspace = this.app.workspace;
         const { leaf, view } = await this.getOrCreateKeywordNoteView();
 
         view.setSelectionMode("tag", subTag);
         view.setTimeField("mtime");
         view.setIncludeSubTags(includeSubTags);
 
-        workspace.revealLeaf(leaf);
+        await this.revealKeywordNoteLeaf(leaf, view);
     }
 
     // 获取某个关键词下的所有子标签（如 test → ['test/work', 'test/ideas']）
@@ -243,28 +304,25 @@ export default class KeywordNotesPlugin extends Plugin {
 
     // 打开文件夹视图
     async openFolderView(folder: FolderConfig) {
-        const workspace = this.app.workspace;
         const { leaf, view } = await this.getOrCreateKeywordNoteView();
 
         view.setSelectionMode("folder", folder.path);
         view.setTimeField("mtime");
         view.setFolderDisplay(folder);
 
-        workspace.revealLeaf(leaf);
+        await this.revealKeywordNoteLeaf(leaf, view);
     }
 
     async openTagView(tagName: string, timeField: TimeField = "mtime") {
-        const workspace = this.app.workspace;
         const { leaf, view } = await this.getOrCreateKeywordNoteView();
 
         view.setSelectionMode("tag", tagName);
         view.setTimeField(timeField);
 
-        workspace.revealLeaf(leaf);
+        await this.revealKeywordNoteLeaf(leaf, view);
     }
 
     async openOverviewView(target: OverviewTarget) {
-        const workspace = this.app.workspace;
         const { leaf, view } = await this.getOrCreateKeywordNoteView();
 
         view.setSelectionMode("overview", target);
@@ -272,7 +330,7 @@ export default class KeywordNotesPlugin extends Plugin {
         view.setIncludeSubTags(false);
         view.setOverviewDisplay(target);
 
-        workspace.revealLeaf(leaf);
+        await this.revealKeywordNoteLeaf(leaf, view);
     }
 
     // 获取包含指定标签的所有文件
@@ -736,7 +794,6 @@ export default class KeywordNotesPlugin extends Plugin {
     }
 
     private async openKeywordViewForTag(tag: string): Promise<void> {
-        const workspace = this.app.workspace;
         const { leaf, view } = await this.getOrCreateKeywordNoteView();
         const tagLower = tag.toLowerCase();
         const rootTag = tagLower.includes("/") ? tagLower.split("/")[0] : tagLower;
@@ -754,6 +811,6 @@ export default class KeywordNotesPlugin extends Plugin {
             view.setKeywordDisplay(keyword);
         }
 
-        workspace.revealLeaf(leaf);
+        await this.revealKeywordNoteLeaf(leaf, view);
     }
 }

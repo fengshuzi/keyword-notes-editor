@@ -173,10 +173,9 @@ body.keyword-notes-hide-backlinks .keyword-note-view .embedded-backlinks {
     margin-top: var(--size-4-4);
 }
 
-.is-phone .mod-root .workspace-tabs:not(.mod-visible).kw-view-active {
-    display: flex;
+.is-phone .mod-root .workspace-tabs:not(.mod-visible):has(.keyword-note-view) {
+    display: flex !important;
 }
-
 
 /* 关键词列表侧边栏样式 */
 .keyword-list-container {

@@ -1,7 +1,7 @@
 {
 	"id": "keyword-notes-editor",
 	"name": "Keyword Notes Editor",
-	"version": "1.0.6",
+	"version": "1.0.7",
 	"minAppVersion": "1.7.2",
 	"description": "View and edit notes grouped by keyword tags, similar to Logseq tag view.",
 	"author": "lizhifeng",

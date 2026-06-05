@@ -1,5 +1,5 @@
 import KeywordNotesPlugin from "./keywordNotesPlugin";
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, Platform, PluginSettingTab, Setting } from "obsidian";
 
 // Keyword configuration interface (supports aggregation: p1+p2+p3+p4|Quadrant, matches any one tag)
 export interface KeywordConfig {
@@ -16,12 +16,15 @@ export interface FolderConfig {
     icon: string;     // Display icon
 }
 
+export type MobileNoteMode = "editable" | "preview";
+
 export interface KeywordNotesSettings {
     hideFrontmatter: boolean;
     hideBacklinks: boolean;
     createAndOpenOnStartup: boolean;
     useArrowUpOrDownToNavigate: boolean;
     openKeywordListOnStartup: boolean;  // Do not auto-open keyword list by default
+    mobileNoteMode: MobileNoteMode;
 
     // Keyword configuration
     keywords: KeywordConfig[];
@@ -64,6 +67,7 @@ export const DEFAULT_SETTINGS: KeywordNotesSettings = {
     createAndOpenOnStartup: false,
     useArrowUpOrDownToNavigate: false,
     openKeywordListOnStartup: false,  // Do not auto-open keyword list by default
+    mobileNoteMode: "editable",
     keywords: [],
     folders: [],
     preset: [],
@@ -273,6 +277,24 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
                         this.applySettingsUpdate();
                     })
             );
+
+        new Setting(containerEl)
+            .setName("Mobile note mode")
+            .setDesc("Only affects Obsidian Mobile. Editable embeds source editors; Preview renders markdown for maximum stability.")
+            .addDropdown((dropdown) =>
+                dropdown
+                    .addOption("editable", "Editable")
+                    .addOption("preview", "Preview")
+                    .setValue(this.plugin.settings.mobileNoteMode || "editable")
+                    .onChange((value) => {
+                        this.plugin.settings.mobileNoteMode = value as MobileNoteMode;
+                        this.applySettingsUpdate();
+                        if (Platform.isMobile) {
+                            this.plugin.refreshKeywordNoteViews();
+                        }
+                    })
+            );
+
 
         new Setting(containerEl)
             .setName("New page folder")
