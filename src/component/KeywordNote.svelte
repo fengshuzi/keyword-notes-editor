@@ -2,6 +2,7 @@
     import type KeywordNotesPlugin from "../keywordNotesPlugin";
     import { MarkdownView, Menu, TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
     import { KeywordNoteEditor, spawnLeafView } from "../leafView";
+    import { NOTE_COLORS } from "../keywordNoteSettings";
     import { onDestroy, onMount } from "svelte";
 
     export let file: TAbstractFile;
@@ -13,6 +14,8 @@
     export let onDeleteNote: ((file: TFile) => Promise<void>) | null = null;
     export let isPinned: boolean = false;
     export let onTogglePinned: ((file: TFile, pinned: boolean) => Promise<void>) | null = null;
+    export let noteColor: string | null = null;
+    export let onSetNoteColor: ((file: TFile, color: string | null) => void) | null = null;
 
     let editorEl: HTMLElement;
     let containerEl: HTMLElement;
@@ -224,6 +227,26 @@
                     void handleTogglePinned();
                 });
         });
+        menu.addItem((item) => {
+            item
+                .setTitle("颜色标记")
+                .setIcon("palette")
+                .onClick(() => {
+                    const colorMenu = new Menu();
+                    for (const { label, value } of NOTE_COLORS) {
+                        colorMenu.addItem((ci) => {
+                            ci.setTitle(label)
+                                .setChecked(noteColor === value)
+                                .onClick(() => {
+                                    if (onSetNoteColor && file instanceof TFile) {
+                                        onSetNoteColor(file, value);
+                                    }
+                                });
+                        });
+                    }
+                    colorMenu.showAtMouseEvent(event);
+                });
+        });
         menu.addSeparator();
         menu.addItem((item) => {
             item
@@ -284,13 +307,13 @@
     class:has-readable-line-width={hasReadableLineWidth}
     data-id='kw-editor-{file.path}'
     bind:this={containerEl}
-    style="min-height: {displayedCollapsed ? 'auto' : editorHeight + 'px'};"
+    style="min-height: {displayedCollapsed ? 'auto' : editorHeight + 'px'}; {noteColor ? `--kw-note-card-accent: ${noteColor}; --kw-note-dot-color: ${noteColor};` : ''}"
     on:focusin={handleFocusIn}
     on:focusout={handleFocusOut}
 >
     <div class="keyword-note">
         {#if title}
-            <div class="keyword-note-title inline-title">
+            <div class="keyword-note-title">
                 <!-- svelte-ignore a11y-interactive-supports-focus -->
                 <!-- svelte-ignore a11y-click-events-have-key-events -->
                 <span
@@ -460,6 +483,11 @@
     .clickable-link {
         cursor: pointer;
         text-decoration: none;
+        font-size: var(--inline-title-size, 1.5em);
+        font-weight: var(--inline-title-weight, 700);
+        font-style: var(--inline-title-style, normal);
+        color: var(--text-normal);
+        line-height: 1.3;
     }
 
     .clickable-link:hover {

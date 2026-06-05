@@ -39,12 +39,14 @@ export default class KeywordNotesPlugin extends Plugin {
     private onVaultDelete = (file: TAbstractFile) => {
         if (file instanceof TFile) {
             this.removePinnedNotePath(file.path);
+            this.removeNoteColor(file.path);
         }
     };
 
     private onVaultRename = (file: TAbstractFile, oldPath: string) => {
         if (file instanceof TFile) {
             this.renamePinnedNotePath(oldPath, file.path);
+            this.renameNoteColor(oldPath, file.path);
         }
     };
     
@@ -540,7 +542,39 @@ export default class KeywordNotesPlugin extends Plugin {
         await this.saveSettings();
     }
 
-    removePinnedNotePath(filePath: string): void {
+    getNoteColor(filePath: string): string | null {
+        return this.settings.noteColors?.[filePath] ?? null;
+    }
+
+    setNoteColor(filePath: string, color: string | null): void {
+        const colors = this.settings.noteColors ?? {};
+        if (color === null) {
+            delete colors[filePath];
+        } else {
+            colors[filePath] = color;
+        }
+        this.settings.noteColors = colors;
+        void this.saveSettings();
+    }
+
+    removeNoteColor(filePath: string): void {
+        const colors = this.settings.noteColors;
+        if (colors && filePath in colors) {
+            delete colors[filePath];
+            void this.saveSettings();
+        }
+    }
+
+    renameNoteColor(oldPath: string, newPath: string): void {
+        const colors = this.settings.noteColors;
+        if (colors && oldPath in colors) {
+            colors[newPath] = colors[oldPath];
+            delete colors[oldPath];
+            void this.saveSettings();
+        }
+    }
+
+        removePinnedNotePath(filePath: string): void {
         const pinnedNotes = this.settings.pinnedNotes;
         if (!pinnedNotes) return;
 

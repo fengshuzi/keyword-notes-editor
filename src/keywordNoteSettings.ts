@@ -45,6 +45,9 @@ export interface KeywordNotesSettings {
 
     /** Pinned note paths grouped by keyword/folder view scope */
     pinnedNotes: Record<string, string[]>;
+
+    /** Per-note color overrides: file path -> hex color string */
+    noteColors: Record<string, string>;
 }
 
 // Fruit icon list (shared by keywords and folders)
@@ -63,7 +66,21 @@ export const DEFAULT_SETTINGS: KeywordNotesSettings = {
     newPageFolder: "pages",
     journalFolders: ["journals"],
     pinnedNotes: {},
+    noteColors: {},
 };
+
+export const NOTE_COLORS: Array<{ label: string; value: string | null }> = [
+    { label: "🔴 红色",  value: "#ff6b6b" },
+    { label: "🟠 橙色",  value: "#ff9f43" },
+    { label: "🟡 黄色",  value: "#ffd43b" },
+    { label: "🟢 绿色",  value: "#51cf66" },
+    { label: "🔵 蓝色",  value: "#339af0" },
+    { label: "🟣 紫色",  value: "#cc5de8" },
+    { label: "🩷 粉色",  value: "#f06595" },
+    { label: "🟤 棕色",  value: "#a0856c" },
+    { label: "⬛ 灰色",  value: "#868e96" },
+    { label: "⊘ 无",    value: null },
+];
 
 // Parse keyword configuration string (supports aggregation: p1+p2+p3+p4|Quadrant)
 export function parseKeywordsString(str: string, startIndex: number = 0): KeywordConfig[] {

@@ -27,6 +27,7 @@
     let visibleNotes: Set<string> = new Set();
     let deletingPaths: Set<string> = new Set();
     let pinnedPaths: Set<string> = new Set();
+    let noteColors: Map<string, string> = new Map();
 
     let hasMore = true;
     let firstLoaded = true;
@@ -90,6 +91,7 @@
         if (version !== resetVersion) return;
 
         syncPinnedPaths();
+        syncNoteColors();
         filteredFiles = getScopedFilteredFiles();
         hasMore = filteredFiles.length > 0;
         firstLoaded = true;
@@ -153,6 +155,10 @@
         pinnedPaths = new Set(plugin.getPinnedNotePaths(pinnedScopeKey));
     }
 
+    function syncNoteColors() {
+        noteColors = new Map(Object.entries(plugin.settings.noteColors ?? {}));
+    }
+
     function applyPinnedOrder(files: TFile[]): TFile[] {
         if (pinnedPaths.size === 0) return files;
 
@@ -184,6 +190,7 @@
         deletingPaths.add(file.path);
         plugin.removePinnedNotePath(file.path);
         syncPinnedPaths();
+        syncNoteColors();
 
         filteredFiles = filteredFiles.filter((f) => f.path !== file.path);
         renderedFiles = renderedFiles.filter((f) => f.path !== file.path);
@@ -206,6 +213,7 @@
         const loadedCount = renderedFiles.length;
         fileManager.fileCreate(file);
         syncPinnedPaths();
+        syncNoteColors();
         filteredFiles = getScopedFilteredFiles();
         
         const newIndex = filteredFiles.findIndex((f) => f.path === file.path);
@@ -222,6 +230,7 @@
         deletingPaths.delete(file.path);
         plugin.removePinnedNotePath(file.path);
         syncPinnedPaths();
+        syncNoteColors();
         filteredFiles = getScopedFilteredFiles();
         
         renderedFiles = renderedFiles.filter((f) => {
@@ -243,6 +252,7 @@
     async function togglePinned(file: TFile, pinned: boolean) {
         await plugin.setNotePinned(pinnedScopeKey, file, pinned);
         syncPinnedPaths();
+        syncNoteColors();
 
         const loadedCount = Math.max(renderedFiles.length, 1);
         filteredFiles = getScopedFilteredFiles();
@@ -255,6 +265,11 @@
         updateHasMore();
     }
     
+    async function setNoteColor(file: import('obsidian').TFile, color: string | null) {
+        plugin.setNoteColor(file.path, color);
+        syncNoteColors();
+    }
+
     function handleNoteVisibilityChange(file: TFile, isVisible: boolean) {
         if (isVisible) {
             visibleNotes.add(file.path);
@@ -289,6 +304,8 @@
                 onDeleteNote={deleteNote}
                 isPinned={pinnedPaths.has(file.path)}
                 onTogglePinned={togglePinned}
+                noteColor={noteColors.get(file.path) ?? null}
+                onSetNoteColor={setNoteColor}
             />
         </div>
     {/each}

@@ -558,3 +558,8 @@ body.keyword-notes-hide-backlinks .keyword-note-view .embedded-backlinks {
     width: 100%;
     height: 80px;
 }
+
+/* 覆盖主题对文档内联标题的染色 */
+.keyword-note-view .inline-title {
+    color: var(--text-normal);
+}
