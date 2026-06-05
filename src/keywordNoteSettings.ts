@@ -175,7 +175,7 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
     display(): void {
         const { containerEl } = this;
         containerEl.empty();
-        new Setting(containerEl).setName("Keyword Notes Editor").setHeading();
+        new Setting(containerEl).setName("General").setHeading();
 
         // Keyword configuration
         new Setting(containerEl).setName("Keyword Configuration").setHeading();
@@ -263,7 +263,7 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
                     });
             });
 
-        new Setting(containerEl).setName("Display Settings").setHeading();
+        new Setting(containerEl).setName("Display").setHeading();
 
         new Setting(containerEl)
             .setName("Default note color")

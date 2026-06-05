@@ -36,9 +36,10 @@ const popovers = new WeakMap<Element, KeywordNoteEditor>();
 type ConstructableWorkspaceSplit = new (ws: Workspace, dir: "horizontal" | "vertical") => WorkspaceSplit;
 type WorkspaceLeafWithNullableParent = WorkspaceLeaf & { parent?: WorkspaceItem | null };
 type WorkspaceSplitWithNullableChildren = WorkspaceSplit & { children?: WorkspaceItem[] | null };
+type KeywordNoteWorkspaceLeaf = WorkspaceLeaf & { __keywordNoteEmbedded?: boolean };
 
 export function isKeywordNoteLeaf(leaf: WorkspaceLeaf) {
-    if ((leaf as any).__keywordNoteEmbedded) return true;
+    if ((leaf as KeywordNoteWorkspaceLeaf).__keywordNoteEmbedded) return true;
     return leaf.containerEl.matches(".kw-editor.kw-leaf-view .workspace-leaf");
 }
 
@@ -237,8 +238,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
     }
 
     setInitialDimensions() {
-        this.hoverEl.style.height = 'auto';
-        this.hoverEl.style.width = "100%";
+        this.hoverEl.addClass("kw-editor-default-size");
     }
 
     transition() {
@@ -280,7 +280,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
 
         this.titleEl.insertAdjacentElement("afterend", this.rootSplit.containerEl);
         const leaf = this.plugin.app.workspace.createLeafInParent(this.rootSplit, 0);
-        (leaf as any).__keywordNoteEmbedded = true;
+        (leaf as KeywordNoteWorkspaceLeaf).__keywordNoteEmbedded = true;
 
         this.updateLeaves();
         return leaf;
@@ -303,7 +303,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
     onShow() {
         // Once we've been open for closeDelay, use the closeDelay as a hiding timeout
         const closeDelay = 600;
-        setTimeout(() => (this.waitTime = closeDelay), closeDelay);
+        window.setTimeout(() => (this.waitTime = closeDelay), closeDelay);
 
         this.oldPopover?.hide();
         this.oldPopover = null;
@@ -520,8 +520,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
             this.hoverEl.dataset.imgWidth = String(img.naturalWidth);
             this.hoverEl.dataset.imgRatio = String(img.naturalWidth / img.naturalHeight);
         } else if (leafViewType === "pdf") {
-            this.hoverEl.style.height = "800px";
-            this.hoverEl.style.width = "600px";
+            this.hoverEl.addClass("kw-editor-pdf-size");
         }
         if (state.state?.mode === "source") {
             this.whenShown(() => {

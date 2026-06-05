@@ -132,7 +132,7 @@ function navigateToAdjacentLeaf(
     );
 
     // Focus the editor
-    setTimeout(() => {
+    window.setTimeout(() => {
         // Try different methods to ensure focus
         if (targetLeaf.view instanceof MarkdownView) {
             const editMode = (targetLeaf.view as unknown as { editMode?: { editor?: { focus: () => void } } }).editMode;

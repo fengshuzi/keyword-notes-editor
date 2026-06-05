@@ -2,6 +2,16 @@
     /*overflow-y: hidden;*/
 }
 
+.kw-editor-default-size {
+    height: auto;
+    width: 100%;
+}
+
+.kw-editor-pdf-size {
+    height: 800px;
+    width: 600px;
+}
+
 .kw-editor .cm-scroller {
     /*overflow-y: hidden;*/
     padding: unset;

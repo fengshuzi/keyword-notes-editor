@@ -32,8 +32,6 @@ import { KEYWORD_NOTE_VIEW_TYPE, KeywordNoteView } from "./keywordNoteView";
 import { KEYWORD_LIST_VIEW_TYPE, KeywordListView } from "./keywordListView";
 
 export default class KeywordNotesPlugin extends Plugin {
-    private view: KeywordNoteView;
-    private keywordListView: KeywordListView;
     lastActiveFile: TFile;
 
     declare settings: KeywordNotesSettings;
@@ -63,23 +61,24 @@ export default class KeywordNotesPlugin extends Plugin {
         addIconList();
 
         // Register the up and down navigation extension
-        this.settings.useArrowUpOrDownToNavigate &&
+        if (this.settings.useArrowUpOrDownToNavigate) {
             this.registerEditorExtension([
                 createUpDownNavigationExtension({
                     app: this.app,
                     plugin: this,
                 }),
             ]);
+        }
 
         this.registerView(
             KEYWORD_NOTE_VIEW_TYPE,
-            (leaf: WorkspaceLeaf) => (this.view = new KeywordNoteView(leaf, this))
+            (leaf: WorkspaceLeaf) => new KeywordNoteView(leaf, this)
         );
 
         // Register keyword list sidebar view
         this.registerView(
             KEYWORD_LIST_VIEW_TYPE,
-            (leaf: WorkspaceLeaf) => (this.keywordListView = new KeywordListView(leaf, this))
+            (leaf: WorkspaceLeaf) => new KeywordListView(leaf, this)
         );
 
         this.addRibbonIcon("list", "Open keyword list", () => {
@@ -101,7 +100,7 @@ export default class KeywordNotesPlugin extends Plugin {
         // Open keyword list sidebar by default
         this.app.workspace.onLayoutReady(() => {
             if (this.settings.openKeywordListOnStartup) {
-                this.activateKeywordListView();
+                void this.activateKeywordListView();
             }
         });
     }
@@ -131,7 +130,7 @@ export default class KeywordNotesPlugin extends Plugin {
         }
         
         if (leaf) {
-            workspace.revealLeaf(leaf);
+            await workspace.revealLeaf(leaf);
         }
     }
 
@@ -174,7 +173,7 @@ export default class KeywordNotesPlugin extends Plugin {
             const leaf = existingLeaves[0] ?? this.app.workspace.getMostRecentLeaf() ?? this.app.workspace.getLeaf(false);
 
             for (const duplicate of existingLeaves.slice(1)) {
-                duplicate.detach();
+                await duplicate.detach();
             }
 
             await leaf.setViewState({ type: KEYWORD_NOTE_VIEW_TYPE });
@@ -221,7 +220,7 @@ export default class KeywordNotesPlugin extends Plugin {
         const workspace = this.app.workspace;
 
         if (!Platform.isMobile) {
-            workspace.revealLeaf(leaf);
+            await workspace.revealLeaf(leaf);
             return;
         }
 
