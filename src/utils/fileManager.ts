@@ -81,6 +81,10 @@ export class FileManager {
         });
     }
 
+    private getFileTimestamp(file: TFile, field: BaseTimeField): number {
+        return field === "ctime" ? file.stat.ctime : file.stat.mtime;
+    }
+
 
     /**
      * Check if a file is inside an excluded folder
@@ -329,7 +333,7 @@ export class FileManager {
             const endDate = moment(this.options.customRange.end);
 
             this.filteredFiles = this.allFiles.filter((file) => {
-                const fileTime = moment(file.stat[baseTimeField]);
+                const fileTime = moment(this.getFileTimestamp(file, baseTimeField));
                 return fileTime.isBetween(startDate, endDate, 'day', '[]');
             });
             return;
@@ -375,7 +379,7 @@ export class FileManager {
         }
 
         this.filteredFiles = this.allFiles.filter((file) => {
-            const fileTime = moment(file.stat[baseTimeField]);
+            const fileTime = moment(this.getFileTimestamp(file, baseTimeField));
             return fileTime.isAfter(cutoff);
         });
 

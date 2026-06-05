@@ -50,6 +50,7 @@ declare global {
     interface Window {
         activeWindow: Window;
         activeDocument: Document;
+        app: App;
     }
 }
 

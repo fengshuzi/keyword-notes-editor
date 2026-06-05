@@ -37,7 +37,9 @@ const popovers = new WeakMap<Element, KeywordNoteEditor>();
 type ConstructableWorkspaceSplit = new (ws: Workspace, dir: "horizontal" | "vertical") => WorkspaceSplit;
 type WorkspaceLeafWithNullableParent = WorkspaceLeaf & { parent?: WorkspaceItem | null };
 type WorkspaceSplitWithNullableChildren = WorkspaceSplit & { children?: WorkspaceItem[] | null };
+type WorkspaceParentWithChildren = WorkspaceSplit & { children?: WorkspaceItem[] | null };
 type KeywordNoteWorkspaceLeaf = WorkspaceLeaf & { __keywordNoteEmbedded?: boolean };
+type ConstructableWithPrototype<T> = { new (...args: unknown[]): T; prototype: object };
 
 export function isKeywordNoteLeaf(leaf: WorkspaceLeaf) {
     if ((leaf as KeywordNoteWorkspaceLeaf).__keywordNoteEmbedded) return true;
@@ -48,12 +50,16 @@ function isLeafAttached(leaf: WorkspaceLeaf): boolean {
     return Boolean((leaf as WorkspaceLeafWithNullableParent).parent);
 }
 
-function nosuper<T>(base: new (...args: unknown[]) => T): new () => T {
+function nosuper<T>(base: ConstructableWithPrototype<T>): new () => T {
     const derived = function () {
-        return Object.setPrototypeOf(new Component, new.target.prototype);
-    };
-    derived.prototype = base.prototype;
-    return Object.setPrototypeOf(derived, base);
+        const target = new.target as unknown as { prototype: object };
+        const component = new Component() as unknown as T;
+        Object.setPrototypeOf(component, target.prototype);
+        return component;
+    } as unknown as new () => T;
+    (derived as { prototype: object }).prototype = base.prototype;
+    Object.setPrototypeOf(derived, base);
+    return derived;
 }
 
 export const spawnLeafView = (plugin: KeywordNotesPlugin, initiatingEl?: HTMLElement, leaf?: WorkspaceLeaf, onShowCallback?: () => unknown): [WorkspaceLeaf, KeywordNoteEditor] => {
@@ -79,7 +85,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
     detachScheduled = false;
     opening = false;
 
-    rootSplit: WorkspaceSplit = new (WorkspaceSplit as ConstructableWorkspaceSplit)((window as unknown as { app: { workspace: Workspace } }).app.workspace, "vertical");
+    rootSplit: WorkspaceSplit;
     isPinned = true;
 
     titleEl: HTMLElement;
@@ -99,9 +105,8 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
     originalLinkText: string;
     static activePopover?: KeywordNoteEditor;
 
-    static activeWindows() {
+    static activeWindows(ws: Workspace) {
         const windows: Window[] = [window];
-                const ws = (window as unknown as { app?: { workspace?: { floatingSplit?: { children: Array<{ win?: Window; doc?: Document }> } } } }).app?.workspace;
         const floatingSplit = ws?.floatingSplit;
         if (floatingSplit) {
             for (const split of floatingSplit.children) {
@@ -119,20 +124,20 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
         return plugin.app.workspace.rootSplit;
     }
 
-    static activePopovers() {
-        return this.activeWindows().flatMap(this.popoversForWindow);
+    static activePopovers(ws: Workspace) {
+        return this.activeWindows(ws).flatMap(this.popoversForWindow);
     }
 
     static popoversForWindow(win?: Window) {
         const body = (win ?? window).activeDocument.body;
-        return (Array.prototype.slice.call(body.querySelectorAll(".kw-leaf-view")) as HTMLElement[])
+        return Array.from(body.querySelectorAll<HTMLElement>(".kw-leaf-view"))
             .map(el => popovers.get(el)!)
             .filter(he => he);
     }
 
     static forLeaf(leaf: WorkspaceLeaf | undefined) {
         // leaf can be null such as when right clicking on an internal link
-        const el = leaf && activeDocument.body.matchParent.call(leaf.containerEl, ".kw-leaf-view"); // work around matchParent race condition
+        const el = leaf?.containerEl.closest<HTMLElement>(".kw-leaf-view") ?? null;
         return el ? popovers.get(el) : undefined;
     }
 
@@ -142,7 +147,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
         if (KeywordNoteEditor._iteratingPopovers) return false;
         KeywordNoteEditor._iteratingPopovers = true;
         try {
-            for (const popover of this.activePopovers()) {
+            for (const popover of this.activePopovers(ws)) {
                 if (popover.hasRootChildren() && ws.iterateLeaves(cb, popover.rootSplit)) return true;
             }
         } finally {
@@ -173,6 +178,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
         this.waitTime = waitTime;
         this.state = PopoverState.Showing;
 
+        this.rootSplit = new (WorkspaceSplit as ConstructableWorkspaceSplit)(plugin.app.workspace, "vertical");
         this.ownerDocument = this.targetEl?.ownerDocument ?? window.activeDocument ?? activeDocument;
         this.hoverEl = this.ownerDocument.defaultView!.createDiv({
             cls: "kw-editor kw-leaf-view",
@@ -182,7 +188,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
 
         this.abortController!.load();
         this.timer = window.setTimeout(() => this.show(), waitTime);
-        this.setActive = this._setActive.bind(this);
+        this.setActive = (event) => this._setActive(event);
         if (hoverEl) {
             hoverEl.addEventListener("mousedown", this.setActive);
         }
@@ -279,7 +285,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
     }
 
     attachLeaf(): WorkspaceLeaf {
-        this.rootSplit.getRoot = () => this.plugin.app.workspace[this.ownerDocument === activeDocument ? "rootSplit" : "floatingSplit"]!;
+        this.rootSplit.getRoot = () => this.plugin.app.workspace[this.ownerDocument === activeDocument ? "rootSplit" : "floatingSplit"];
         this.rootSplit.getContainer = () => KeywordNoteEditor.containerForDocument(this.plugin, this.ownerDocument);
 
         this.titleEl.insertAdjacentElement("afterend", this.rootSplit.containerEl);
@@ -295,10 +301,11 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
         this.registerEvent(this.plugin.app.workspace.on("layout-change", this.updateLeaves, this));
         this.registerEvent(this.plugin.app.workspace.on("layout-change", () => {
             // Ensure that top-level items in a popover are not tabbed
-            const children = (this.rootSplit as unknown as { children?: WorkspaceItem[] | null }).children ?? [];
+            const children = (this.rootSplit as WorkspaceParentWithChildren).children ?? [];
             children.forEach((item, index) => {
                 if (item instanceof WorkspaceTabs) {
-                    this.rootSplit.replaceChild(index, (item as unknown as { children: WorkspaceItem[] }).children[0]);
+                    const firstChild = (item as WorkspaceParentWithChildren).children?.[0];
+                    if (firstChild) this.rootSplit.replaceChild(index, firstChild);
                 }
             });
         }));
@@ -355,7 +362,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
     }
 
     shouldShowChild(): boolean {
-        return KeywordNoteEditor.activePopovers().some(popover => {
+        return KeywordNoteEditor.activePopovers(this.plugin.app.workspace).some(popover => {
             if (popover !== this && popover.targetEl && this.hoverEl.contains(popover.targetEl)) {
                 return popover.shouldShow();
             }

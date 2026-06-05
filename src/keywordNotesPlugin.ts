@@ -11,6 +11,7 @@ import {
     normalizePath,
     Platform,
     TFolder,
+    MarkdownFileInfo,
 } from "obsidian";
 import type { EventRef } from "obsidian";
 
@@ -30,6 +31,17 @@ import { OverviewTarget, TimeField } from "./types/time";
 import { createUpDownNavigationExtension } from "./component/UpAndDownNavigate";
 import { KEYWORD_NOTE_VIEW_TYPE, KeywordNoteView } from "./keywordNoteView";
 import { KEYWORD_LIST_VIEW_TYPE, KeywordListView } from "./keywordListView";
+
+type ViewConstructor = { VIEW_TYPE?: string };
+type MarkdownViewLike = { editMode?: unknown };
+type LeafWithParent = WorkspaceLeaf & {
+    parentLeaf?: WorkspaceLeaf & {
+        activeTime?: number;
+        view?: MarkdownViewLike;
+    };
+};
+type WorkspaceSetActiveParams = { focus?: boolean } | boolean;
+type LeafIterator = (item: WorkspaceLeaf) => boolean | void;
 
 export default class KeywordNotesPlugin extends Plugin {
     lastActiveFile: TFile;
@@ -377,16 +389,16 @@ export default class KeywordNotesPlugin extends Plugin {
         let layoutChanging = false; void layoutChanging;
         const wrapper = {
             getActiveViewOfType: (next: (...args: unknown[]) => unknown) =>
-                function (this: unknown, t: unknown) {
-                    const fn = next as (type: { VIEW_TYPE?: string }, ...args: unknown[]) => { VIEW_TYPE?: string } | null;
-                    const result = fn.call(this, t as { VIEW_TYPE?: string });
+                function (this: Workspace, t: ViewConstructor) {
+                    const fn = next as (this: Workspace, type: ViewConstructor, ...args: unknown[]) => ViewConstructor | null;
+                    const result = Reflect.apply(fn, this, [t]);
                     if (!result) {
-                        if ((t as { VIEW_TYPE?: string })?.VIEW_TYPE === "markdown") {
-                            const recentLeaf = (this as Workspace).getMostRecentLeaf();
+                        if (t?.VIEW_TYPE === "markdown") {
+                            const recentLeaf = this.getMostRecentLeaf();
                             if (recentLeaf?.view instanceof KeywordNoteView) {
                                 return recentLeaf.view.editMode;
                             } else {
-                                return result;
+                                return null;
                             }
                         }
                     }
@@ -402,35 +414,35 @@ export default class KeywordNotesPlugin extends Plugin {
                     }
                 },
             iterateLeaves: (old: (...args: unknown[]) => unknown) =>
-                function (this: unknown, arg1: unknown, arg2: unknown) {
-                    type leafIterator = (item: WorkspaceLeaf) => boolean | void;
-                    const oldFn = old as (arg1: leafIterator | WorkspaceItem, arg2?: leafIterator) => boolean;
-                    if (oldFn.call(this, arg1 as (WorkspaceItem | leafIterator), arg2 as leafIterator | undefined)) return true;
+                function (this: Workspace, arg1: WorkspaceItem | LeafIterator, arg2?: LeafIterator) {
+                    const oldFn = old as (this: Workspace, arg1: LeafIterator | WorkspaceItem, arg2?: LeafIterator) => boolean;
+                    if (Reflect.apply(oldFn, this, [arg1, arg2]) as boolean) return true;
 
-                    const cb: leafIterator = (
-                        typeof arg1 === "function" ? arg1 as leafIterator : arg2 as leafIterator
-                    );
+                    const cb = typeof arg1 === "function" ? arg1 : arg2;
+                    if (!cb) return false;
                     return KeywordNoteEditor.iteratePopoverLeaves(
-                        this as unknown as Workspace,
+                        this,
                         cb
-                    ) as unknown;
+                    );
                 },
             setActiveLeaf: (next: (...args: unknown[]) => unknown) =>
-                function (this: unknown, e: unknown, t?: unknown) {
-                    const setFn = next as (leaf: WorkspaceLeaf, params?: { focus?: boolean } | boolean) => void;
-                    const workspaceLeaf = e as WorkspaceLeaf;
-                    const leaf = e as unknown as { parentLeaf?: WorkspaceLeaf & { activeTime?: number; view?: { editMode?: unknown } } };
-                    if (isKeywordNoteLeaf(workspaceLeaf) && leaf.parentLeaf) {
+                function (this: Workspace, e: WorkspaceLeaf, t?: WorkspaceSetActiveParams) {
+                    const setFn = next as (this: Workspace, leaf: WorkspaceLeaf, params?: WorkspaceSetActiveParams) => void;
+                    const leaf = e as LeafWithParent;
+                    if (isKeywordNoteLeaf(e) && leaf.parentLeaf) {
                         leaf.parentLeaf.activeTime = 1700000000000;
-                        setFn.call(this, leaf.parentLeaf, (t as { focus?: boolean }) ?? {});
-                        const editMode = ((e as unknown as { view?: { editMode?: unknown } }).view as unknown as { editMode?: unknown })?.editMode;
+                        setFn.call(this, leaf.parentLeaf, t ?? {});
+                        const editMode = (e.view as MarkdownViewLike)?.editMode;
                         if (editMode) {
-                            (this as unknown as { activeEditor: unknown }).activeEditor = (e as unknown as { view: unknown }).view;
-                            (leaf.parentLeaf.view as unknown as { editMode?: unknown }).editMode = (e as unknown as { view: unknown }).view;
+                            this.activeEditor = e.view as unknown as MarkdownFileInfo;
+                            if (leaf.parentLeaf.view) {
+                                leaf.parentLeaf.view.editMode = e.view;
+                            }
                         }
                         return;
                     }
-                    return setFn.call(this, e as WorkspaceLeaf, (t as { focus?: boolean }) ?? {});
+                    setFn.call(this, e, t ?? {});
+                    return;
                 },
         };
         const uninstaller = around(
@@ -445,11 +457,12 @@ export default class KeywordNotesPlugin extends Plugin {
             around(WorkspaceLeaf.prototype, {
                 getRoot(old: (this: WorkspaceLeaf) => WorkspaceItem & { getRoot?: () => WorkspaceItem }) {
                     return function (this: WorkspaceLeaf) {
-                        if (!isKeywordNoteLeaf(this)) return old.call(this);
-                        const top = old.call(this);
+                        const root = Reflect.apply(old, this, []) as WorkspaceItem & { getRoot?: () => WorkspaceItem };
+                        if (!isKeywordNoteLeaf(this)) return root;
+                        const top = root;
                         return top?.getRoot === this.getRoot
                             ? top
-                            : top?.getRoot();
+                            : top?.getRoot() ?? top;
                     };
                 },
                 setPinned(old: (this: WorkspaceLeaf, pinned: boolean) => void) {
@@ -461,7 +474,7 @@ export default class KeywordNotesPlugin extends Plugin {
                 },
                 openFile(old: (this: WorkspaceLeaf, file: TFile, openState?: OpenViewState) => Promise<void>) {
                     return function (this: WorkspaceLeaf, file: TFile, openState?: OpenViewState) {
-                        return old.call(this, file, openState);
+                        return Reflect.apply(old, this, [file, openState]);
                     };
                 },
             })
@@ -515,10 +528,11 @@ export default class KeywordNotesPlugin extends Plugin {
     }
 
     public async loadSettings() {
+        const storedSettings = await this.loadData() as Partial<KeywordNotesSettings> | null;
         this.settings = Object.assign(
             {},
             DEFAULT_SETTINGS,
-            await this.loadData()
+            storedSettings
         );
         
         // Reassign icons to ensure keywords and folders do not have duplicate icons
