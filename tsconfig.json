@@ -1,32 +1,32 @@
 {
-    "compilerOptions": {
-        "baseUrl": ".",
-        "inlineSourceMap": true,
-        "inlineSources": true,
-        "module": "ESNext",
-        "target": "ES2019",
-        "allowJs": true,
-        "moduleResolution": "node",
-        "importHelpers": true,
-        "isolatedModules": true,
-        "strictNullChecks": true,
-        "skipLibCheck": true,
-        "lib": [
-            "DOM",
-            "DOM.Iterable",
-            "ES2019"
-        ],
-        "outDir": "./dist",
-        "strict": true
-    },
-    "include": [
-        "src/**/*.d.ts",
-        "src/**/*.ts",
-        "src/**/*.svelte"
+  "compilerOptions": {
+    "baseUrl": ".",
+    "inlineSourceMap": true,
+    "inlineSources": true,
+    "module": "ESNext",
+    "target": "ES2019",
+    "allowJs": true,
+    "moduleResolution": "node",
+    "importHelpers": true,
+    "isolatedModules": true,
+    "strictNullChecks": true,
+    "skipLibCheck": true,
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ES2019"
     ],
-    "exclude": [
-        "node_modules",
-        "*.js",
-        "deploy-local.js"
-    ]
+    "outDir": "./dist",
+    "strict": true
+  },
+  "include": [
+    "src/**/*.d.ts",
+    "src/**/*.ts",
+    "src/**/*.svelte"
+  ],
+  "exclude": [
+    "node_modules",
+    "*.js",
+    "deploy-local.js"
+  ]
 }
