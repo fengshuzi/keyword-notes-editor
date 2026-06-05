@@ -46,7 +46,7 @@ const KeywordNoteEditorViewCtor = KeywordNoteEditorViewComponent as unknown as n
 }) => KeywordNoteEditorViewInstance;
 
 export class KeywordNoteView extends ItemView {
-    view: KeywordNoteEditorViewInstance;
+    view?: KeywordNoteEditorViewInstance;
     plugin: KeywordNotesPlugin;
     scope: Scope;
     editMode?: unknown;
@@ -140,16 +140,16 @@ export class KeywordNoteView extends ItemView {
     }
 
     onFileCreate = (file: TAbstractFile) => {
-        if (file instanceof TFile) this.view.fileCreate(file);
+        if (file instanceof TFile) this.view?.fileCreate(file);
     };
 
     onFileDelete = (file: TAbstractFile) => {
-        if (file instanceof TFile) this.view.fileDelete(file);
+        if (file instanceof TFile) this.view?.fileDelete(file);
     };
 
     onFileRename = (file: TAbstractFile, oldPath: string) => {
         void oldPath;
-        if (file instanceof TFile) this.view.fileRename();
+        if (file instanceof TFile) this.view?.fileRename();
     };
 
     setSelectionMode(mode: SelectionMode, target: string = "") {

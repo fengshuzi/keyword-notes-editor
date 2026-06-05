@@ -39,7 +39,7 @@ type WorkspaceLeafWithNullableParent = WorkspaceLeaf & { parent?: WorkspaceItem 
 type WorkspaceSplitWithNullableChildren = WorkspaceSplit & { children?: WorkspaceItem[] | null };
 type WorkspaceParentWithChildren = WorkspaceSplit & { children?: WorkspaceItem[] | null };
 type KeywordNoteWorkspaceLeaf = WorkspaceLeaf & { __keywordNoteEmbedded?: boolean };
-type ConstructableWithPrototype<T> = { new (...args: unknown[]): T; prototype: object };
+type ConstructableWithPrototype<T> = { new (...args: never[]): T; prototype: object };
 
 export function isKeywordNoteLeaf(leaf: WorkspaceLeaf) {
     if ((leaf as KeywordNoteWorkspaceLeaf).__keywordNoteEmbedded) return true;
@@ -79,7 +79,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
     onTarget: boolean;
     setActive: (event: MouseEvent) => void;
 
-    lockedOut: boolean;
+    lockedOut = false;
     abortController? = this.addChild(new Component());
     detaching = false;
     detachScheduled = false;
@@ -88,8 +88,8 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
     rootSplit: WorkspaceSplit;
     isPinned = true;
 
-    titleEl: HTMLElement;
-    containerEl: HTMLElement;
+    titleEl!: HTMLElement;
+    containerEl!: HTMLElement;
 
     // It is currently not useful.
     // leafInHoverEl: WorkspaceLeaf;
@@ -99,10 +99,10 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
 
     id = genId(8);
     bounce?: NodeJS.Timeout;
-    boundOnZoomOut: () => void;
+    boundOnZoomOut: () => void = () => undefined;
 
-    originalPath: string; // these are kept to avoid adopting targets w/a different link
-    originalLinkText: string;
+    originalPath = ""; // these are kept to avoid adopting targets w/a different link
+    originalLinkText = "";
     static activePopover?: KeywordNoteEditor;
 
     static activeWindows(ws: Workspace) {
@@ -156,7 +156,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
         return false;
     }
 
-    hoverEl: HTMLElement;
+    declare hoverEl: HTMLElement;
 
     constructor(
         parent: KeywordNoteEditorParent,

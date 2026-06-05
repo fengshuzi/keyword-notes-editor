@@ -46,7 +46,7 @@ function buildTagTree(subTags: string[], rootPrefix: string): Map<string, TagTre
 
 export class KeywordListView extends ItemView {
     plugin: KeywordNotesPlugin;
-    private listEl: HTMLElement;
+    private listEl!: HTMLElement;
     private activeKey = "";
 
     /** Collapse state: key is node fullPath, value is whether expanded */

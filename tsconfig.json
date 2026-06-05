@@ -6,7 +6,6 @@
         "module": "ESNext",
         "target": "ES2019",
         "allowJs": true,
-        "noImplicitAny": false,
         "moduleResolution": "node",
         "importHelpers": true,
         "isolatedModules": true,
@@ -17,7 +16,8 @@
             "DOM.Iterable",
             "ES2019"
         ],
-        "outDir": "./dist"
+        "outDir": "./dist",
+        "strict": true
     },
     "include": [
         "src/**/*.d.ts",

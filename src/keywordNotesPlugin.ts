@@ -44,7 +44,7 @@ type WorkspaceSetActiveParams = { focus?: boolean } | boolean;
 type LeafIterator = (item: WorkspaceLeaf) => boolean | void;
 
 export default class KeywordNotesPlugin extends Plugin {
-    lastActiveFile: TFile;
+    lastActiveFile?: TFile;
 
     declare settings: KeywordNotesSettings;
 
@@ -405,7 +405,7 @@ export default class KeywordNotesPlugin extends Plugin {
                     return result;
                 },
             changeLayout: (old: (...args: unknown[]) => unknown) =>
-                async function (workspace: unknown) {
+                async function (this: Workspace, workspace: unknown) {
                     layoutChanging = true;
                     try {
                         await old.call(this, workspace);
