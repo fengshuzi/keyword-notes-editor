@@ -6,7 +6,6 @@ import {
     Component,
     EphemeralState,
     HoverPopover,
-    MarkdownEditView,
     OpenViewState,
     parseLinktext,
     PopoverState,
@@ -27,7 +26,9 @@ import { genId } from "./utils/utils";
 
 export interface KeywordNoteEditorParent {
     hoverPopover: KeywordNoteEditor | null;
+    KeywordNoteEditor?: KeywordNoteEditor | null;
     containerEl?: HTMLElement;
+    editorEl?: HTMLElement;
     view?: View;
     dom?: HTMLElement;
 }
@@ -56,8 +57,8 @@ function nosuper<T>(base: new (...args: unknown[]) => T): new () => T {
 }
 
 export const spawnLeafView = (plugin: KeywordNotesPlugin, initiatingEl?: HTMLElement, leaf?: WorkspaceLeaf, onShowCallback?: () => unknown): [WorkspaceLeaf, KeywordNoteEditor] => {
-    // When Obsidian doesn't set any leaf active, use leaf instead.
-    let parent = plugin.app.workspace.activeLeaf as unknown as KeywordNoteEditorParent;
+    // When Obsidian doesn't have a recent leaf, use the caller leaf instead.
+    let parent = plugin.app.workspace.getMostRecentLeaf() as unknown as KeywordNoteEditorParent;
     if (!parent) parent = leaf as unknown as KeywordNoteEditorParent;
 
     if (!initiatingEl) initiatingEl = parent?.containerEl;
@@ -68,6 +69,7 @@ export const spawnLeafView = (plugin: KeywordNotesPlugin, initiatingEl?: HTMLEle
 };
 
 export class KeywordNoteEditor extends nosuper(HoverPopover) {
+    parent: KeywordNoteEditorParent | null;
     onTarget: boolean;
     setActive: (event: MouseEvent) => void;
 
@@ -86,8 +88,8 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
     // It is currently not useful.
     // leafInHoverEl: WorkspaceLeaf;
 
-    oldPopover = this.parent?.KeywordNoteEditor;
-    document: Document;
+    oldPopover: KeywordNoteEditor | null = null;
+    ownerDocument: Document;
 
     id = genId(8);
     bounce?: NodeJS.Timeout;
@@ -110,7 +112,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
     }
 
     static containerForDocument(plugin: KeywordNotesPlugin, doc: Document) {
-        if (doc !== document && plugin.app.workspace.floatingSplit)
+        if (doc !== activeDocument && plugin.app.workspace.floatingSplit)
             for (const container of plugin.app.workspace.floatingSplit.children) {
                 if (container.doc === doc) return container;
             }
@@ -122,14 +124,15 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
     }
 
     static popoversForWindow(win?: Window) {
-        return (Array.prototype.slice.call(win?.document?.body.querySelectorAll(".kw-leaf-view") ?? []) as HTMLElement[])
+        const body = (win ?? window).activeDocument.body;
+        return (Array.prototype.slice.call(body.querySelectorAll(".kw-leaf-view")) as HTMLElement[])
             .map(el => popovers.get(el)!)
             .filter(he => he);
     }
 
     static forLeaf(leaf: WorkspaceLeaf | undefined) {
         // leaf can be null such as when right clicking on an internal link
-        const el = leaf && document.body.matchParent.call(leaf.containerEl, ".kw-leaf-view"); // work around matchParent race condition
+        const el = leaf && activeDocument.body.matchParent.call(leaf.containerEl, ".kw-leaf-view"); // work around matchParent race condition
         return el ? popovers.get(el) : undefined;
     }
 
@@ -166,18 +169,19 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
         this.onTarget = true;
 
         this.parent = parent;
+        this.oldPopover = this.parent?.KeywordNoteEditor ?? null;
         this.waitTime = waitTime;
         this.state = PopoverState.Showing;
 
-        this.document = this.targetEl?.ownerDocument ?? window.activeDocument ?? window.document;
-        this.hoverEl = this.document.defaultView!.createDiv({
+        this.ownerDocument = this.targetEl?.ownerDocument ?? window.activeDocument ?? activeDocument;
+        this.hoverEl = this.ownerDocument.defaultView!.createDiv({
             cls: "kw-editor kw-leaf-view",
             attr: {id: "dn-" + this.id},
         });
         const {hoverEl} = this;
 
         this.abortController!.load();
-        this.timer = window.setTimeout(this.show.bind(this), waitTime);
+        this.timer = window.setTimeout(() => this.show(), waitTime);
         this.setActive = this._setActive.bind(this);
         if (hoverEl) {
             hoverEl.addEventListener("mousedown", this.setActive);
@@ -206,7 +210,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
     }
 
     updateLeaves() {
-        if (!this.detaching && this.onTarget && this.targetEl && !this.document.contains(this.targetEl)) {
+        if (!this.detaching && this.onTarget && this.targetEl && !this.ownerDocument.contains(this.targetEl)) {
             this.onTarget = false;
             this.transition();
         }
@@ -267,7 +271,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
 
 
     buildWindowControls() {
-        this.titleEl = this.document.defaultView!.createDiv("popover-titlebar");
+        this.titleEl = this.ownerDocument.defaultView!.createDiv("popover-titlebar");
         this.titleEl.createDiv("popover-title");
 
         this.containerEl.prepend(this.titleEl);
@@ -275,8 +279,8 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
     }
 
     attachLeaf(): WorkspaceLeaf {
-        this.rootSplit.getRoot = () => this.plugin.app.workspace[this.document === document ? "rootSplit" : "floatingSplit"]!;
-        this.rootSplit.getContainer = () => KeywordNoteEditor.containerForDocument(this.plugin, this.document);
+        this.rootSplit.getRoot = () => this.plugin.app.workspace[this.ownerDocument === activeDocument ? "rootSplit" : "floatingSplit"]!;
+        this.rootSplit.getContainer = () => KeywordNoteEditor.containerForDocument(this.plugin, this.ownerDocument);
 
         this.titleEl.insertAdjacentElement("afterend", this.rootSplit.containerEl);
         const leaf = this.plugin.app.workspace.createLeafInParent(this.rootSplit, 0);
@@ -310,7 +314,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
 
         this.hoverEl.toggleClass("is-new", true);
 
-        this.document.body.addEventListener(
+        this.ownerDocument.body.addEventListener(
             "click",
             () => {
                 this.hoverEl.toggleClass("is-new", false);
@@ -367,14 +371,14 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
             !!(
                 this.onTarget ||
                 (this.state == PopoverState.Shown) ||
-                this.document.querySelector(`body>.modal-container, body > #he${this.id} ~ .menu, body > #he${this.id} ~ .suggestion-container`)
+                this.ownerDocument.querySelector(`body>.modal-container, body > #he${this.id} ~ .menu, body > #he${this.id} ~ .suggestion-container`)
             )
         );
     }
 
     show() {
         // native obsidian logic start
-        if (!this.targetEl || this.document.body.contains(this.targetEl)) {
+        if (!this.targetEl || this.ownerDocument.body.contains(this.targetEl)) {
             this.state = PopoverState.Shown;
             this.timer = 0;
             this.targetEl.appendChild(this.hoverEl);
@@ -509,10 +513,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
         const leafViewType = leaf?.view?.getViewType();
         if (leafViewType === "image") {
             // TODO: temporary workaround to prevent image popover from disappearing immediately when using live preview
-            if (
-                this.parent?.hasOwnProperty("editorEl") &&
-                (this.parent as unknown as MarkdownEditView).editorEl!.hasClass("is-live-preview")
-            ) {
+            if (this.parent?.editorEl?.hasClass("is-live-preview")) {
                 this.waitTime = 3000;
             }
             const img = leaf!.view.contentEl.querySelector("img")!;

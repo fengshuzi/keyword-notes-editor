@@ -106,9 +106,9 @@ export default class KeywordNotesPlugin extends Plugin {
     }
 
     onunload() {
-        document.body.toggleClass("keyword-notes-hide-frontmatter", false);
-        document.body.toggleClass("keyword-notes-hide-backlinks", false);
-        document.body.style.removeProperty("--keyword-notes-default-color");
+        activeDocument.body.toggleClass("keyword-notes-hide-frontmatter", false);
+        activeDocument.body.toggleClass("keyword-notes-hide-backlinks", false);
+        activeDocument.body.style.removeProperty("--keyword-notes-default-color");
     }
 
     // Activate keyword list sidebar
@@ -173,7 +173,7 @@ export default class KeywordNotesPlugin extends Plugin {
             const leaf = existingLeaves[0] ?? this.app.workspace.getMostRecentLeaf() ?? this.app.workspace.getLeaf(false);
 
             for (const duplicate of existingLeaves.slice(1)) {
-                await duplicate.detach();
+                duplicate.detach();
             }
 
             await leaf.setViewState({ type: KEYWORD_NOTE_VIEW_TYPE });
@@ -355,11 +355,11 @@ export default class KeywordNotesPlugin extends Plugin {
     }
 
     initCssRules() {
-        document.body.toggleClass(
+        activeDocument.body.toggleClass(
             "keyword-notes-hide-frontmatter",
             this.settings.hideFrontmatter
         );
-        document.body.toggleClass(
+        activeDocument.body.toggleClass(
             "keyword-notes-hide-backlinks",
             this.settings.hideBacklinks
         );
@@ -367,7 +367,7 @@ export default class KeywordNotesPlugin extends Plugin {
     }
 
     applyDefaultNoteColor() {
-        document.body.style.setProperty(
+        activeDocument.body.style.setProperty(
             "--keyword-notes-default-color",
             this.settings.defaultNoteColor || DEFAULT_NOTE_COLOR
         );
@@ -443,8 +443,8 @@ export default class KeywordNotesPlugin extends Plugin {
     patchWorkspaceLeaf() {
         this.register(
             around(WorkspaceLeaf.prototype, {
-                getRoot(old) {
-                    return function () {
+                getRoot(old: (this: WorkspaceLeaf) => WorkspaceItem & { getRoot?: () => WorkspaceItem }) {
+                    return function (this: WorkspaceLeaf) {
                         if (!isKeywordNoteLeaf(this)) return old.call(this);
                         const top = old.call(this);
                         return top?.getRoot === this.getRoot
@@ -452,15 +452,15 @@ export default class KeywordNotesPlugin extends Plugin {
                             : top?.getRoot();
                     };
                 },
-                setPinned(old) {
-                    return function (pinned: boolean) {
+                setPinned(old: (this: WorkspaceLeaf, pinned: boolean) => void) {
+                    return function (this: WorkspaceLeaf, pinned: boolean) {
                         old.call(this, pinned);
                         if (isKeywordNoteLeaf(this) && !pinned)
                             this.setPinned(true);
                     };
                 },
-                openFile(old) {
-                    return function (file: TFile, openState?: OpenViewState) {
+                openFile(old: (this: WorkspaceLeaf, file: TFile, openState?: OpenViewState) => Promise<void>) {
+                    return function (this: WorkspaceLeaf, file: TFile, openState?: OpenViewState) {
                         return old.call(this, file, openState);
                     };
                 },

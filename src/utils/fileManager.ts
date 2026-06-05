@@ -2,6 +2,8 @@ import { TFile, moment, App, getAllTags } from "obsidian";
 import type { CachedMetadata, ListItemCache, TagCache } from "obsidian";
 import { OverviewTarget, TimeRange, TimeField } from "../types/time";
 
+type BaseTimeField = "ctime" | "mtime" | "name";
+
 export interface FileManagerOptions {
     mode: "folder" | "tag" | "overview";
     target?: string;
@@ -37,11 +39,16 @@ export class FileManager {
      */
     private parseTimeField(timeField: TimeField | undefined): {
         isReverse: boolean;
-        baseTimeField: string;
+        baseTimeField: BaseTimeField;
     } {
         const field = timeField || "mtime";
         const isReverse = field.endsWith("Reverse");
-        const baseTimeField = isReverse ? field.replace("Reverse", "") : field;
+        const normalized = isReverse ? field.replace("Reverse", "") : field;
+        const baseTimeField: BaseTimeField = normalized === "name"
+            ? "name"
+            : normalized === "ctime"
+                ? "ctime"
+                : "mtime";
         return { isReverse, baseTimeField };
     }
 

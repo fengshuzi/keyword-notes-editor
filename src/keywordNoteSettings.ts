@@ -349,7 +349,7 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
                     .onChange(async (value) => {
                         this.plugin.settings.hideFrontmatter = value;
 
-                        document.body.classList.toggle(
+                        activeDocument.body.classList.toggle(
                             "keyword-notes-hide-frontmatter",
                             value
                         );
@@ -366,7 +366,7 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
                     .onChange(async (value) => {
                         this.plugin.settings.hideBacklinks = value;
 
-                        document.body.classList.toggle(
+                        activeDocument.body.classList.toggle(
                             "keyword-notes-hide-backlinks",
                             value
                         );
@@ -394,6 +394,6 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
     }
 
     applySettingsUpdate(): void {
-        this.plugin.saveSettings();
+        void this.plugin.saveSettings();
     }
 }

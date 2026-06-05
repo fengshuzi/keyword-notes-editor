@@ -8,7 +8,7 @@ import {
     TFile,
 } from "obsidian";
 import { OverviewTarget, SelectionMode, TimeField } from "./types/time";
-import KeywordNoteEditorView from "./component/KeywordNoteEditorView.svelte";
+import KeywordNoteEditorViewComponent from "./component/KeywordNoteEditorView.svelte";
 import type { KeywordConfig, FolderConfig } from "./keywordNoteSettings";
 
 export const KEYWORD_NOTE_VIEW_TYPE = "keyword-notes-view";
@@ -18,8 +18,35 @@ export function isEmebeddedLeaf(leaf: WorkspaceLeaf) {
     return (leaf as unknown as { containerEl: HTMLElement }).containerEl.matches(".kw-leaf-view");
 }
 
+interface KeywordNoteEditorViewInstance {
+    $set(props: Partial<{
+        selectionMode: SelectionMode;
+        target: string;
+        timeField: TimeField;
+        includeSubTags: boolean;
+    }>): void;
+    refresh(): void;
+    fileCreate(file: TFile): void;
+    fileDelete(file: TFile): void;
+    fileRename(): void;
+    foldAll(): void;
+    expandAll(): void;
+}
+
+const KeywordNoteEditorViewCtor = KeywordNoteEditorViewComponent as unknown as new (options: {
+    target: HTMLElement;
+    props: {
+        plugin: KeywordNotesPlugin;
+        leaf: WorkspaceLeaf;
+        selectionMode: SelectionMode;
+        target: string;
+        timeField: TimeField;
+        includeSubTags: boolean;
+    };
+}) => KeywordNoteEditorViewInstance;
+
 export class KeywordNoteView extends ItemView {
-    view: KeywordNoteEditorView;
+    view: KeywordNoteEditorViewInstance;
     plugin: KeywordNotesPlugin;
     scope: Scope;
 
@@ -261,7 +288,7 @@ export class KeywordNoteView extends ItemView {
 
         // Create Svelte view here so it exists regardless of how the view is opened
         if (!this.view) {
-            this.view = new KeywordNoteEditorView({
+            this.view = new KeywordNoteEditorViewCtor({
                 target: this.contentEl,
                 props: {
                     plugin: this.plugin,
@@ -272,7 +299,9 @@ export class KeywordNoteView extends ItemView {
                     includeSubTags: this.includeSubTags,
                 },
             });
-            this.app.workspace.onLayoutReady(this.view.refresh.bind(this.view));
+            this.app.workspace.onLayoutReady(() => {
+                if (this.view) this.view.refresh();
+            });
             this.registerInterval(
                 window.setInterval(() => {
                     if (this.view) this.view.refresh();
@@ -283,4 +312,3 @@ export class KeywordNoteView extends ItemView {
 
 
 }
-

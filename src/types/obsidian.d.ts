@@ -1,5 +1,5 @@
 import "obsidian";
-import { Plugin, SuggestModal, TFile, View, WorkspaceLeaf } from "obsidian";
+import { Plugin, SuggestModal, TFile, View, WorkspaceContainer, WorkspaceLeaf, WorkspaceSplit } from "obsidian";
 
 interface InternalPlugins {
     switcher: QuickSwitcherPlugin;
@@ -216,7 +216,9 @@ declare module "obsidian" {
     }
 
     interface Workspace {
-        floatingSplit: any;
+        floatingSplit: WorkspaceSplit & {
+            children: Array<WorkspaceContainer & { win?: Window; doc?: Document }>;
+        };
     }
 
     interface MenuItem {
@@ -238,7 +240,7 @@ declare module "obsidian" {
     }
 
     interface HoverPopover {
-        parent: any;
+        parent: unknown;
         targetEl: HTMLElement;
         hoverEl: HTMLElement;
 
