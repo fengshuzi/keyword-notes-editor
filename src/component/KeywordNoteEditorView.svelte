@@ -28,6 +28,7 @@
     let deletingPaths: Set<string> = new Set();
     let pinnedPaths: Set<string> = new Set();
     let noteColors: Map<string, string> = new Map();
+    let selectedNotePath: string | null = null;
 
     let hasMore = true;
     let firstLoaded = true;
@@ -82,6 +83,7 @@
         renderedFiles = [];
         filteredFiles = [];
         visibleNotes = new Set();
+        selectedNotePath = null;
         hasMore = false;
         firstLoaded = true;
 
@@ -188,6 +190,9 @@
     async function deleteNote(file: TFile) {
         if (deletingPaths.has(file.path)) return;
         deletingPaths.add(file.path);
+        if (selectedNotePath === file.path) {
+            selectedNotePath = null;
+        }
         plugin.removePinnedNotePath(file.path);
         syncPinnedPaths();
         syncNoteColors();
@@ -228,6 +233,9 @@
     export function fileDelete(file: TFile) {
         fileManager.fileDelete(file);
         deletingPaths.delete(file.path);
+        if (selectedNotePath === file.path) {
+            selectedNotePath = null;
+        }
         plugin.removePinnedNotePath(file.path);
         syncPinnedPaths();
         syncNoteColors();
@@ -270,6 +278,10 @@
         syncNoteColors();
     }
 
+    function selectNote(file: TFile) {
+        selectedNotePath = file.path;
+    }
+
     function handleNoteVisibilityChange(file: TFile, isVisible: boolean) {
         if (isVisible) {
             visibleNotes.add(file.path);
@@ -306,6 +318,8 @@
                 onTogglePinned={togglePinned}
                 noteColor={noteColors.get(file.path) ?? null}
                 onSetNoteColor={setNoteColor}
+                selectedPath={selectedNotePath}
+                onSelectNote={selectNote}
             />
         </div>
     {/each}
@@ -314,7 +328,11 @@
     }} on:inview_init={startFillViewport} on:inview_change={infiniteHandler}
          on:inview_leave={stopFillViewport}/>
     {#if !hasMore}
-        <div class="no-more-text">—— No more results ——</div>
+        <div class="no-more-text">
+            <span class="no-more-line"></span>
+            <span class="no-more-message">到底啦，知识仓鼠已经翻完库存。</span>
+            <span class="no-more-line"></span>
+        </div>
     {/if}
 </div>
 
@@ -334,9 +352,30 @@
     }
 
     .no-more-text {
-        margin-left: auto;
-        margin-right: auto;
+        display: flex;
+        align-items: center;
+        gap: var(--size-4-3);
+        margin: var(--size-4-6) auto var(--size-4-4);
+        color: var(--text-muted);
+        font-size: var(--font-ui-small);
         text-align: center;
+        white-space: nowrap;
+        width: min(520px, 86%);
+    }
+
+    .no-more-line {
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(
+            90deg,
+            transparent,
+            color-mix(in srgb, var(--text-muted) 36%, transparent),
+            transparent
+        );
+    }
+
+    .no-more-message {
+        opacity: 0.82;
     }
     
     .keyword-note-wrapper {

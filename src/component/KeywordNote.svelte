@@ -16,6 +16,8 @@
     export let onTogglePinned: ((file: TFile, pinned: boolean) => Promise<void>) | null = null;
     export let noteColor: string | null = null;
     export let onSetNoteColor: ((file: TFile, color: string | null) => void) | null = null;
+    export let selectedPath: string | null = null;
+    export let onSelectNote: ((file: TFile) => void) | null = null;
 
     let editorEl: HTMLElement;
     let containerEl: HTMLElement;
@@ -30,8 +32,6 @@
     
     let isDestroying = false;
     let isDeleting = false;
-    let isSelected = false;
-    let keepSelectedOnNextBlur = false;
     let isCollapsed: boolean = false;
     let hasReadableLineWidth: boolean = false;
 
@@ -165,37 +165,22 @@
     }
 
     function selectNote() {
-        isSelected = true;
+        if (file instanceof TFile && onSelectNote) {
+            onSelectNote(file);
+        }
     }
 
     function handleFocusIn() {
         selectNote();
     }
 
-    function handleFocusOut(event: FocusEvent) {
-        if (keepSelectedOnNextBlur) {
-            window.setTimeout(() => {
-                keepSelectedOnNextBlur = false;
-            }, 0);
-            return;
-        }
+    $: isSelected = file instanceof TFile && selectedPath === file.path;
+    $: noteColorStyle = noteColor ? `--kw-note-card-accent: ${noteColor}; --kw-note-dot-color: ${noteColor};` : "";
 
-        const nextTarget = event.relatedTarget;
-        if (nextTarget instanceof Node && containerEl?.contains(nextTarget)) return;
-        isSelected = false;
-    }
-    
     $: displayedCollapsed = collapseAll !== null ? collapseAll : isCollapsed;
 
     $: if (collapseAll !== null) {
         isCollapsed = collapseAll;
-    }
-
-    function toggleCollapse() {
-        if (collapseAll !== null && onIndividualToggle) {
-            onIndividualToggle();
-        }
-        isCollapsed = !displayedCollapsed;
     }
 
     function setCollapsed(nextCollapsed: boolean) {
@@ -208,7 +193,6 @@
     function handleCollapseContextMenu(event: MouseEvent) {
         event.preventDefault();
         event.stopPropagation();
-        keepSelectedOnNextBlur = true;
         selectNote();
 
         const menu = new Menu();
@@ -264,7 +248,6 @@
     function handleDotMouseDown(event: MouseEvent) {
         selectNote();
         if (event.button === 2) {
-            keepSelectedOnNextBlur = true;
             event.preventDefault();
             event.stopPropagation();
         }
@@ -307,9 +290,8 @@
     class:has-readable-line-width={hasReadableLineWidth}
     data-id='kw-editor-{file.path}'
     bind:this={containerEl}
-    style="min-height: {displayedCollapsed ? 'auto' : editorHeight + 'px'}; {noteColor ? `--kw-note-card-accent: ${noteColor}; --kw-note-dot-color: ${noteColor};` : ''}"
+    style="min-height: {displayedCollapsed ? 'auto' : editorHeight + 'px'}; {noteColorStyle}"
     on:focusin={handleFocusIn}
-    on:focusout={handleFocusOut}
 >
     <div class="keyword-note">
         {#if title}
@@ -321,7 +303,6 @@
                     data-collapsed={displayedCollapsed}
                     class="agenda-dot-button"
                     on:mousedown={handleDotMouseDown}
-                    on:click={toggleCollapse}
                     on:contextmenu={handleCollapseContextMenu}
                 ></span>
                 <!-- svelte-ignore a11y-interactive-supports-focus -->
@@ -356,14 +337,13 @@
     }
 
     .keyword-note-container {
-        --kw-note-card-accent: #ffb000;
+        --kw-note-card-accent: var(--keyword-notes-default-color, #ffb000);
         border: 1px solid transparent;
         border-radius: 10px;
         transition: background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
     }
 
-    .keyword-note-container.is-selected,
-    .keyword-note-container:focus-within {
+    .keyword-note-container.is-selected {
         background:
             linear-gradient(
                 180deg,
@@ -409,7 +389,7 @@
     }
 
     .agenda-dot-button {
-        --kw-note-dot-color: #ffb000;
+        --kw-note-dot-color: var(--kw-note-card-accent, var(--keyword-notes-default-color, #ffb000));
         position: relative;
         display: inline-flex;
         align-items: center;

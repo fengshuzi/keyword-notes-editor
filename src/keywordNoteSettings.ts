@@ -48,10 +48,15 @@ export interface KeywordNotesSettings {
 
     /** Per-note color overrides: file path -> hex color string */
     noteColors: Record<string, string>;
+
+    /** Default accent color for notes without a per-note override */
+    defaultNoteColor: string;
 }
 
 // Fruit icon list (shared by keywords and folders)
 const FRUIT_ICONS = ['🍎', '🍏', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐', '🍈', '🍒', '🍑', '🥭', '🍍', '🥥', '🥝', '🍅', '🥑', '🌽', '🥕', '🥦', '🌰'];
+
+export const DEFAULT_NOTE_COLOR = "#ffb000";
 
 export const DEFAULT_SETTINGS: KeywordNotesSettings = {
     hideFrontmatter: false,
@@ -67,6 +72,7 @@ export const DEFAULT_SETTINGS: KeywordNotesSettings = {
     journalFolders: ["journals"],
     pinnedNotes: {},
     noteColors: {},
+    defaultNoteColor: DEFAULT_NOTE_COLOR,
 };
 
 export const NOTE_COLORS: Array<{ label: string; value: string | null }> = [
@@ -254,6 +260,19 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
             });
 
         new Setting(containerEl).setName("Display Settings").setHeading();
+
+        new Setting(containerEl)
+            .setName("Default note color")
+            .setDesc("Accent color used by selected notes and note dots when a note does not have its own color.")
+            .addColorPicker((color) =>
+                color
+                    .setValue(this.plugin.settings.defaultNoteColor || DEFAULT_NOTE_COLOR)
+                    .onChange((value) => {
+                        this.plugin.settings.defaultNoteColor = value || DEFAULT_NOTE_COLOR;
+                        this.plugin.applyDefaultNoteColor();
+                        this.applySettingsUpdate();
+                    })
+            );
 
         new Setting(containerEl)
             .setName("New page folder")

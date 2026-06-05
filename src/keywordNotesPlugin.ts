@@ -21,6 +21,7 @@ import {
     KeywordNotesSettings,
     KeywordNotesSettingTab,
     DEFAULT_SETTINGS,
+    DEFAULT_NOTE_COLOR,
     KeywordConfig,
     FolderConfig,
 } from "./keywordNoteSettings";
@@ -107,6 +108,7 @@ export default class KeywordNotesPlugin extends Plugin {
     onunload() {
         document.body.toggleClass("keyword-notes-hide-frontmatter", false);
         document.body.toggleClass("keyword-notes-hide-backlinks", false);
+        document.body.style.removeProperty("--keyword-notes-default-color");
     }
 
     // Activate keyword list sidebar
@@ -303,6 +305,14 @@ export default class KeywordNotesPlugin extends Plugin {
         document.body.toggleClass(
             "keyword-notes-hide-backlinks",
             this.settings.hideBacklinks
+        );
+        this.applyDefaultNoteColor();
+    }
+
+    applyDefaultNoteColor() {
+        document.body.style.setProperty(
+            "--keyword-notes-default-color",
+            this.settings.defaultNoteColor || DEFAULT_NOTE_COLOR
         );
     }
 
