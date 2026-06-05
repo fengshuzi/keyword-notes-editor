@@ -6,13 +6,8 @@ import {
     Scope,
     TAbstractFile,
     TFile,
-    Menu,
-    Modal,
-    App,
-    ButtonComponent,
-    Setting,
 } from "obsidian";
-import { OverviewTarget, SelectionMode, TimeRange, TimeField } from "./types/time";
+import { OverviewTarget, SelectionMode, TimeField } from "./types/time";
 import KeywordNoteEditorView from "./component/KeywordNoteEditorView.svelte";
 import type { KeywordConfig, FolderConfig } from "./keywordNoteSettings";
 
@@ -28,7 +23,6 @@ export class KeywordNoteView extends ItemView {
     plugin: KeywordNotesPlugin;
     scope: Scope;
 
-    selectedDaysRange: TimeRange = "all";
     selectionMode: SelectionMode = "tag";
     target: string = "";
     timeField: TimeField = "mtime";
@@ -41,11 +35,6 @@ export class KeywordNoteView extends ItemView {
     folderDisplay: FolderConfig | null = null;
 
     overviewDisplay: { target: OverviewTarget; alias: string; icon: string } | null = null;
-
-    customRange: {
-        start: Date;
-        end: Date;
-    } | null = null;
 
     constructor(leaf: WorkspaceLeaf, plugin: KeywordNotesPlugin) {
         super(leaf);
@@ -135,20 +124,6 @@ export class KeywordNoteView extends ItemView {
         if (file instanceof TFile) this.view.fileRename();
     };
 
-    setSelectedRange(range: TimeRange) {
-        this.selectedDaysRange = range;
-        if (this.view) {
-            if (range === "custom") {
-                this.view.$set({
-                    selectedRange: range,
-                    customRange: this.customRange,
-                });
-            } else {
-                this.view.$set({ selectedRange: range });
-            }
-        }
-    }
-
     setSelectionMode(mode: SelectionMode, target: string = "") {
         this.selectionMode = mode;
         this.target = target;
@@ -189,8 +164,6 @@ export class KeywordNoteView extends ItemView {
             selectionMode: this.selectionMode,
             target: this.target,
             timeField: this.timeField,
-            selectedRange: this.selectedDaysRange,
-            customRange: this.customRange,
             includeSubTags: this.includeSubTags,
         };
     }
@@ -203,8 +176,6 @@ export class KeywordNoteView extends ItemView {
                 selectionMode?: SelectionMode;
                 target?: string;
                 timeField?: TimeField;
-                selectedRange?: TimeRange;
-                customRange?: { start: Date; end: Date } | null;
                 includeSubTags?: boolean;
             };
 
@@ -212,10 +183,6 @@ export class KeywordNoteView extends ItemView {
                 this.selectionMode = customState.selectionMode;
             if (customState.target) this.target = customState.target;
             if (customState.timeField) this.timeField = customState.timeField;
-            if (customState.selectedRange)
-                this.selectedDaysRange = customState.selectedRange;
-            if (customState.customRange)
-                this.customRange = customState.customRange;
             if (customState.includeSubTags !== undefined)
                 this.includeSubTags = customState.includeSubTags;
             if (
@@ -236,8 +203,6 @@ export class KeywordNoteView extends ItemView {
                     selectionMode: this.selectionMode,
                     target: this.target,
                     timeField: this.timeField,
-                    selectedRange: this.selectedDaysRange,
-                    customRange: this.customRange,
                     includeSubTags: this.includeSubTags,
                 });
             }
@@ -284,45 +249,6 @@ export class KeywordNoteView extends ItemView {
             }
         });
 
-        this.addAction("calendar-range", "Select date range", (e) => {
-            const menu = new Menu();
-            // Add range selection options
-            const addRangeOption = (title: string, range: TimeRange) => {
-                menu.addItem((item) => {
-                    item.setTitle(title);
-                    item.setChecked(this.selectedDaysRange === range);
-                    item.onClick(() => {
-                        this.setSelectedRange(range);
-                    });
-                });
-            };
-
-            addRangeOption("All Notes", "all");
-            addRangeOption("This Week", "week");
-            addRangeOption("This Month", "month");
-            addRangeOption("This Year", "year");
-            addRangeOption("Last Week", "last-week");
-            addRangeOption("Last Month", "last-month");
-            addRangeOption("Last Year", "last-year");
-            addRangeOption("This Quarter", "quarter");
-            addRangeOption("Last Quarter", "last-quarter");
-
-            menu.addSeparator();
-            menu.addItem((item) => {
-                item.setTitle("Custom Date Range");
-                item.setChecked(this.selectedDaysRange === "custom");
-                item.onClick(() => {
-                    const modal = new CustomRangeModal(this.app, (range) => {
-                        this.customRange = range;
-                        this.setSelectedRange("custom");
-                    });
-                    modal.open();
-                });
-            });
-
-            menu.showAtMouseEvent(e as MouseEvent);
-        });
-
         this.addAction("refresh", "Refresh", () => {
             if (this.view) {
                 this.view.refresh();
@@ -340,8 +266,6 @@ export class KeywordNoteView extends ItemView {
                 props: {
                     plugin: this.plugin,
                     leaf: this.leaf,
-                    selectedRange: this.selectedDaysRange,
-                    customRange: this.customRange,
                     selectionMode: this.selectionMode,
                     target: this.target,
                     timeField: this.timeField,
@@ -360,80 +284,3 @@ export class KeywordNoteView extends ItemView {
 
 }
 
-class CustomRangeModal extends Modal {
-    saveCallback: (range: { start: Date; end: Date }) => void;
-    startDate: Date;
-    endDate: Date;
-
-    constructor(
-        app: App,
-        saveCallback: (range: { start: Date; end: Date }) => void
-    ) {
-        super(app);
-        this.saveCallback = saveCallback;
-        this.startDate = new Date();
-        this.endDate = new Date();
-    }
-
-    onOpen() {
-        const { contentEl } = this;
-
-        new Setting(contentEl).setName("Select Custom Date Range").setHeading();
-
-        const startDateContainer = contentEl.createEl("div", {
-            cls: "custom-range-date-container",
-        });
-        startDateContainer.createEl("span", { text: "Start Date: " });
-        const startDatePicker = startDateContainer.createEl("input", {
-            type: "date",
-            value: this.formatDate(this.startDate),
-        });
-        startDatePicker.addEventListener("change", (e) => {
-            this.startDate = new Date((e.target as HTMLInputElement).value);
-        });
-
-        const endDateContainer = contentEl.createEl("div", {
-            cls: "custom-range-date-container",
-        });
-        endDateContainer.createEl("span", { text: "End Date: " });
-        const endDatePicker = endDateContainer.createEl("input", {
-            type: "date",
-            value: this.formatDate(this.endDate),
-        });
-        endDatePicker.addEventListener("change", (e) => {
-            this.endDate = new Date((e.target as HTMLInputElement).value);
-        });
-
-        const buttonContainer = contentEl.createEl("div", {
-            cls: "custom-range-button-container",
-        });
-
-        new ButtonComponent(buttonContainer)
-            .setButtonText("Cancel")
-            .onClick(() => {
-                this.close();
-            });
-
-        new ButtonComponent(buttonContainer)
-            .setButtonText("Confirm")
-            .setCta()
-            .onClick(() => {
-                this.saveCallback({
-                    start: this.startDate,
-                    end: this.endDate,
-                });
-                this.close();
-            });
-    }
-
-    formatDate(date: Date): string {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, "0");
-        const day = String(date.getDate()).padStart(2, "0");
-        return `${year}-${month}-${day}`;
-    }
-
-    onClose() {
-        this.contentEl.empty();
-    }
-}

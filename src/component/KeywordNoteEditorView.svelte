@@ -5,15 +5,13 @@
     import { TFile, moment } from "obsidian";
     import KeywordNote from "./KeywordNote.svelte";
     import { inview } from "svelte-inview";
-    import { TimeRange, SelectionMode, TimeField } from "../types/time";
+    import { SelectionMode, TimeField } from "../types/time";
     import { onMount, tick } from "svelte";
     import { FileManager, FileManagerOptions } from "../utils/fileManager";
 
 
     export let plugin: KeywordNotesPlugin;
     export let leaf: WorkspaceLeaf;
-    export let selectedRange: TimeRange = "all";
-    export let customRange: { start: Date; end: Date } | null = null;
     export let selectionMode: SelectionMode = "tag";
     export let target: string = "";
     export let timeField: TimeField = "mtime";
@@ -43,8 +41,6 @@
     $: fileManagerOptions = {
         mode: selectionMode,
         target: target,
-        timeRange: selectedRange,
-        customRange: customRange,
         app: plugin.app,
         timeField: timeField,
         includeSubTags: includeSubTags,
@@ -52,15 +48,11 @@
         journalFolders: plugin.settings.journalFolders || ["journals"]
     } as FileManagerOptions;
 
-    $: if (fileManager && (selectedRange !== fileManager.options.timeRange || 
-                          customRange !== fileManager.options.customRange ||
-                          selectionMode !== fileManager.options.mode ||
+    $: if (fileManager && (selectionMode !== fileManager.options.mode ||
                           target !== fileManager.options.target ||
                           timeField !== fileManager.options.timeField ||
                           includeSubTags !== fileManager.options.includeSubTags)) {
         fileManager.updateOptions({
-            timeRange: selectedRange,
-            customRange: customRange,
             mode: selectionMode,
             target: target,
             timeField: timeField,
