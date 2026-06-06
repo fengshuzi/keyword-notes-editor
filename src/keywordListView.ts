@@ -144,6 +144,7 @@ export class KeywordListView extends ItemView {
 
     private renderOverviewSection(): void {
         this.renderOverviewItem("today", "今天", "calendar-days", "keyword-list-overview-icon--today");
+        this.renderOverviewItem("recent-edited", "最近编辑", "history", "keyword-list-overview-icon--recent-edited");
         this.renderOverviewItem("important-urgent", "重要且紧急", "flame", "keyword-list-overview-icon--important-urgent");
         this.renderOverviewItem("tasks", "待办事项", "circle-check-big", "keyword-list-overview-icon--tasks");
         this.renderOverviewItem("read-later", "稍后读", "book-open-check", "keyword-list-overview-icon--read-later");

@@ -262,6 +262,10 @@ body.keyword-notes-hide-backlinks .keyword-note-view .embedded-backlinks {
     color: #5b9be7;
 }
 
+.keyword-list-overview-icon--recent-edited {
+    color: #6fba82;
+}
+
 .keyword-list-overview-icon--important-urgent {
     color: #ff7a1a;
 }

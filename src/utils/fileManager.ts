@@ -190,6 +190,8 @@ export class FileManager {
         const target = this.options.target as OverviewTarget | undefined;
         if (target === "today") {
             this.fetchTodayFiles();
+        } else if (target === "recent-edited") {
+            this.fetchRecentEditedFiles();
         } else if (target === "tasks") {
             this.fetchTaskFiles();
         } else if (target === "read-later") {
@@ -220,6 +222,15 @@ export class FileManager {
             ...this.sortFilesByTimeField(journalFiles, this.options.timeField),
             ...this.sortFilesByTimeField(changedTodayFiles, this.options.timeField),
         ];
+    }
+
+    private fetchRecentEditedFiles(): void {
+        if (!this.options.app) return;
+
+        this.allFiles = this.sortFilesByTimeField(
+            this.options.app.vault.getMarkdownFiles(),
+            "mtime"
+        ).slice(0, 10);
     }
 
     private fetchTaskFiles(): void {

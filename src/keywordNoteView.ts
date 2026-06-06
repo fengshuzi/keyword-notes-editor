@@ -97,6 +97,7 @@ export class KeywordNoteView extends ItemView {
         }
         if (this.selectionMode === "overview") {
             if (this.target === "important-urgent") return "重要且紧急";
+            if (this.target === "recent-edited") return "最近编辑";
             if (this.target === "tasks") return "待办事项";
             if (this.target === "read-later") return "稍后读";
             return "今天";
@@ -127,6 +128,8 @@ export class KeywordNoteView extends ItemView {
     setOverviewDisplay(target: OverviewTarget) {
         if (target === "important-urgent") {
             this.overviewDisplay = { target, alias: "重要且紧急", icon: "🔥" };
+        } else if (target === "recent-edited") {
+            this.overviewDisplay = { target, alias: "最近编辑", icon: "🕘" };
         } else if (target === "tasks") {
             this.overviewDisplay = { target, alias: "待办事项", icon: "☑️" };
         } else if (target === "read-later") {
@@ -217,6 +220,7 @@ export class KeywordNoteView extends ItemView {
                 this.selectionMode === "overview" &&
                 (
                     this.target === "today" ||
+                    this.target === "recent-edited" ||
                     this.target === "important-urgent" ||
                     this.target === "tasks" ||
                     this.target === "read-later"
