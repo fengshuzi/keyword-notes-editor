@@ -253,16 +253,6 @@ export class KeywordNoteView extends ItemView {
             void _e;
         });
 
-        // 修复：空格键事件从嵌入的 CodeMirror 编辑器冒泡上来时，
-        // 会被 Obsidian 全局滚动/命令系统拦截，导致无法在编辑器内输入空格。
-        // 在 capture 阶段检测到事件源是编辑器内容区时，阻止继续冒泡。
-        this.contentEl.addEventListener('keydown', (evt) => {
-            if ((evt.target as Element)?.closest('.cm-content, .cm-line')) {
-                evt.stopPropagation();
-            }
-        }, true);
-
-
         // 折叠所有笔记
         this.addAction("chevron-down", "折叠所有笔记", () => {
             if (this.view) {

@@ -355,15 +355,14 @@
                 data-title={title}
             ></div>
         {:else}
+            <!-- svelte-ignore a11y-click-events-have-key-events -->
+            <!-- svelte-ignore a11y-no-static-element-interactions -->
             <div
                 class="keyword-note-editor"
                 data-collapsed={displayedCollapsed}
                 bind:this={editorEl}
                 data-title={title}
-                role="button"
-                tabindex="0"
                 on:click={handleEditorClick}
-                on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), handleEditorClick())}
             >
                 {#if !rendered && shouldRender}
                     <div class="editor-placeholder">Loading...</div>
