@@ -316,7 +316,9 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
         const closeDelay = 600;
         window.setTimeout(() => (this.waitTime = closeDelay), closeDelay);
 
-        this.oldPopover?.hide();
+        // Keyword note views intentionally keep many embedded editors open at once.
+        // The original hover-popover behavior closes the previous popover here,
+        // which can detach the first note after a global collapse/expand cycle.
         this.oldPopover = null;
 
         this.hoverEl.toggleClass("is-new", true);

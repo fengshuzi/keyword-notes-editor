@@ -3,7 +3,7 @@
     import { MarkdownRenderer, MarkdownView, Menu, Platform, TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
     import { KeywordNoteEditor, spawnLeafView } from "../leafView";
     import { NOTE_COLORS } from "../keywordNoteSettings";
-    import { onDestroy, onMount } from "svelte";
+    import { onDestroy, onMount, tick } from "svelte";
 
     export let file: TAbstractFile;
     export let plugin: KeywordNotesPlugin;
@@ -37,6 +37,8 @@
     let isDeleting = false;
     let isCollapsed: boolean = false;
     let hasReadableLineWidth: boolean = false;
+    let lastDisplayedCollapsed: boolean | null = null;
+    let layoutRefreshVersion = 0;
 
     onMount(() => {
         if (file instanceof TFile) {
@@ -132,26 +134,86 @@
 
             rendered = true;
             
-            const timeout = window.setTimeout(() => {
-                if (createdLeaf && containerEl) {
-                    if(!(createdLeaf.view instanceof MarkdownView)) return; 
-                    const h = (createdLeaf.view as unknown as { editMode?: { editor?: { cm?: { dom?: { innerHeight?: number } } } } }).editMode?.editor?.cm?.dom?.innerHeight;
-                    if (typeof h === "number" && h > 0) {
-                        editorHeight = h;
-                        containerEl.style.minHeight = `${h}px`;
-                        // Check for readable line width class on the editor
-                        const cmEditor = containerEl.querySelector('.cm-editor');
-                        if (cmEditor) {
-                            hasReadableLineWidth = cmEditor.classList.contains('is-readable-line-width');
-                        }
-
-                        window.clearTimeout(timeout);
-                    }
-                }
-            }, 400);
+            scheduleEditorLayoutRefresh();
         } catch (error) {
             console.error("Error creating leaf view:", error);
         }
+    }
+
+    type EmbeddedMarkdownView = MarkdownView & {
+        editMode?: {
+            reinit?: () => void;
+            editor?: {
+                refresh?: () => void;
+                cm?: {
+                    requestMeasure?: () => void;
+                    dom?: { innerHeight?: number };
+                };
+            };
+        };
+    };
+
+    function getEmbeddedMarkdownView(): EmbeddedMarkdownView | null {
+        if (!createdLeaf?.view || !(createdLeaf.view instanceof MarkdownView)) return null;
+        return createdLeaf.view as EmbeddedMarkdownView;
+    }
+
+    function updateEditorHeight(): boolean {
+        const view = getEmbeddedMarkdownView();
+        if (!view || !containerEl) return false;
+
+        const h = view.editMode?.editor?.cm?.dom?.innerHeight;
+        if (typeof h === "number" && h > 0) {
+            editorHeight = h;
+            containerEl.style.minHeight = `${h}px`;
+        }
+
+        const cmEditor = containerEl.querySelector(".cm-editor");
+        if (cmEditor) {
+            hasReadableLineWidth = cmEditor.classList.contains("is-readable-line-width");
+        }
+
+        return typeof h === "number" && h > 0;
+    }
+
+    function scheduleEditorLayoutRefresh() {
+        const version = ++layoutRefreshVersion;
+        window.setTimeout(() => {
+            if (version !== layoutRefreshVersion || isDestroying || displayedCollapsed) return;
+
+            const view = getEmbeddedMarkdownView();
+            view?.editMode?.reinit?.();
+            view?.editMode?.editor?.refresh?.();
+            view?.editMode?.editor?.cm?.requestMeasure?.();
+
+            window.requestAnimationFrame(() => {
+                if (version !== layoutRefreshVersion || isDestroying || displayedCollapsed) return;
+                if (!updateEditorHeight()) {
+                    window.setTimeout(() => {
+                        if (version !== layoutRefreshVersion || isDestroying || displayedCollapsed) return;
+                        updateEditorHeight();
+                        getEmbeddedMarkdownView()?.editMode?.editor?.cm?.requestMeasure?.();
+                    }, 250);
+                }
+            });
+        }, 50);
+    }
+
+    async function restoreEditorAfterExpand() {
+        await tick();
+        await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+        if (isDestroying || displayedCollapsed) return;
+        if (!rendered && shouldRender) {
+            showEditor();
+            return;
+        }
+        if (rendered && shouldRender && editorEl && !editorEl.querySelector(".cm-content")) {
+            unloadEditor();
+            await tick();
+            if (!isDestroying && !displayedCollapsed) showEditor();
+            return;
+        }
+        scheduleEditorLayoutRefresh();
     }
     
     function scheduleUnload() {
@@ -218,6 +280,14 @@
 
     $: if (collapseAll !== null) {
         isCollapsed = collapseAll;
+    }
+
+    $: if (lastDisplayedCollapsed !== displayedCollapsed) {
+        const wasCollapsed = lastDisplayedCollapsed;
+        lastDisplayedCollapsed = displayedCollapsed;
+        if (wasCollapsed === true && displayedCollapsed === false && !isMobilePreview) {
+            void restoreEditorAfterExpand();
+        }
     }
 
     function setCollapsed(nextCollapsed: boolean) {

@@ -111,6 +111,10 @@
 
     export function expandAll() {
         collapseAll = false;
+        for (const file of renderedFiles) {
+            visibleNotes.add(file.path);
+        }
+        visibleNotes = visibleNotes;
     }
 
     function clearCollapseAll() {
