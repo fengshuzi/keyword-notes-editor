@@ -43,11 +43,13 @@ type LeafWithParent = WorkspaceLeaf & {
 };
 type WorkspaceSetActiveParams = { focus?: boolean } | boolean;
 type LeafIterator = (item: WorkspaceLeaf) => boolean | void;
+type AttachedLeaf = WorkspaceLeaf & { parent?: unknown };
 
 export default class KeywordNotesPlugin extends Plugin {
     lastActiveFile?: TFile;
 
     declare settings: KeywordNotesSettings;
+    private keywordNoteLeaves = new Set<WorkspaceLeaf>();
 
     private onVaultDelete = (file: TAbstractFile) => {
         if (file instanceof TFile) {
@@ -85,7 +87,10 @@ export default class KeywordNotesPlugin extends Plugin {
 
         this.registerView(
             KEYWORD_NOTE_VIEW_TYPE,
-            (leaf: WorkspaceLeaf) => new KeywordNoteView(leaf, this)
+            (leaf: WorkspaceLeaf) => {
+                this.keywordNoteLeaves.add(leaf);
+                return new KeywordNoteView(leaf, this);
+            }
         );
 
         // Register keyword list sidebar view
@@ -182,11 +187,22 @@ export default class KeywordNotesPlugin extends Plugin {
 
     private async openKeywordNoteView(configure: (view: KeywordNoteView) => void): Promise<void> {
         const workspace = this.app.workspace;
-        workspace.detachLeavesOfType(KEYWORD_NOTE_VIEW_TYPE);
+        const leaves = this.getTrackedKeywordNoteLeaves();
+        const leaf = leaves[0] ?? workspace.getLeaf(true);
 
-        const leaf = workspace.getLeaf(true);
-        await leaf.setViewState({ type: KEYWORD_NOTE_VIEW_TYPE, active: true });
+        for (const duplicate of leaves.slice(1)) {
+            duplicate.detach();
+        }
+
+        if (!leaves[0]) {
+            await leaf.setViewState({ type: KEYWORD_NOTE_VIEW_TYPE, active: true });
+        }
         await leaf.loadIfDeferred();
+
+        if (!this.isKeywordNoteView(leaf.view)) {
+            await leaf.setViewState({ type: KEYWORD_NOTE_VIEW_TYPE, active: true });
+            await leaf.loadIfDeferred();
+        }
 
         if (!this.isKeywordNoteView(leaf.view)) {
             throw new Error("Keyword Notes Editor: failed to create keyword note view.");
@@ -195,6 +211,28 @@ export default class KeywordNotesPlugin extends Plugin {
         configure(leaf.view);
         workspace.setActiveLeaf(leaf, { focus: true });
         await workspace.revealLeaf(leaf);
+    }
+
+    private getTrackedKeywordNoteLeaves(): WorkspaceLeaf[] {
+        const workspaceLeaves: WorkspaceLeaf[] = [];
+        this.app.workspace.iterateAllLeaves((leaf) => {
+            if (leaf.getViewState().type === KEYWORD_NOTE_VIEW_TYPE) {
+                workspaceLeaves.push(leaf);
+            }
+        });
+
+        const leaves = [
+            ...this.keywordNoteLeaves,
+            ...workspaceLeaves,
+            ...this.app.workspace.getLeavesOfType(KEYWORD_NOTE_VIEW_TYPE),
+        ];
+        const uniqueLeaves = [...new Set(leaves)];
+        const attachedLeaves = uniqueLeaves.filter((leaf) => {
+            if (leaf.getViewState().type !== KEYWORD_NOTE_VIEW_TYPE) return false;
+            return (leaf as AttachedLeaf).parent !== null;
+        });
+        this.keywordNoteLeaves = new Set(attachedLeaves);
+        return attachedLeaves;
     }
 
     // Open keyword view (includes sub-tags by default)
