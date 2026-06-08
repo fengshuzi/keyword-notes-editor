@@ -201,7 +201,11 @@ export class KeywordListView extends ItemView {
             }
         };
 
-        titleEl.addEventListener("click", toggle);
+        titleEl.addEventListener("click", () => {
+            toggle();
+            this.setActiveItem("tag", item.keyword);
+            void this.plugin.openKeywordView(item);
+        });
         titleEl.addEventListener("contextmenu", (e) => this.showNewPageMenu(e, item.keyword));
 
         if (isExpanded) {

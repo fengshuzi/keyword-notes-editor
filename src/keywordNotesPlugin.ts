@@ -24,6 +24,7 @@ import {
     KeywordNotesSettingTab,
     DEFAULT_SETTINGS,
     DEFAULT_NOTE_COLOR,
+    NOTE_COLORS,
     KeywordConfig,
     FolderConfig,
 } from "./keywordNoteSettings";
@@ -385,6 +386,21 @@ export default class KeywordNotesPlugin extends Plugin {
         );
     }
 
+    private getRandomNoteColor(filePath: string): string {
+        const colors = NOTE_COLORS
+            .map(color => color.value)
+            .filter((value): value is string => typeof value === "string");
+
+        if (colors.length === 0) return DEFAULT_NOTE_COLOR;
+
+        let hash = 0;
+        for (let i = 0; i < filePath.length; i++) {
+            hash = (hash * 31 + filePath.charCodeAt(i)) >>> 0;
+        }
+
+        return colors[hash % colors.length];
+    }
+
     patchWorkspace() {
         let layoutChanging = false; void layoutChanging;
         const wrapper = {
@@ -625,6 +641,17 @@ export default class KeywordNotesPlugin extends Plugin {
 
     getNoteColor(filePath: string): string | null {
         return this.settings.noteColors?.[filePath] ?? null;
+    }
+
+    getNoteAccentColor(filePath: string): string | null {
+        const noteColor = this.getNoteColor(filePath);
+        if (noteColor) return noteColor;
+
+        if (this.settings.useRandomNoteColors) {
+            return this.getRandomNoteColor(filePath);
+        }
+
+        return null;
     }
 
     setNoteColor(filePath: string, color: string | null): void {

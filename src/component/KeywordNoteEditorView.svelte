@@ -98,8 +98,8 @@
         if (version !== resetVersion) return;
 
         syncPinnedPaths();
-        syncNoteColors();
         filteredFiles = getScopedFilteredFiles();
+        syncNoteColors();
         hasMore = filteredFiles.length > 0;
         firstLoaded = true;
         startFillViewport();
@@ -191,7 +191,11 @@
     }
 
     function syncNoteColors() {
-        noteColors = new Map(Object.entries(plugin.settings.noteColors ?? {}));
+        noteColors = new Map(
+            filteredFiles
+                .map((file) => [file.path, plugin.getNoteAccentColor(file.path)] as const)
+                .filter((entry): entry is readonly [string, string] => entry[1] !== null)
+        );
     }
 
     function applyPinnedOrder(files: TFile[]): TFile[] {
@@ -228,9 +232,9 @@
         }
         plugin.removePinnedNotePath(file.path);
         syncPinnedPaths();
-        syncNoteColors();
 
         filteredFiles = filteredFiles.filter((f) => f.path !== file.path);
+        syncNoteColors();
         renderedFiles = renderedFiles.filter((f) => f.path !== file.path);
         pruneVisibleNotes();
         updateHasMore();
@@ -251,8 +255,8 @@
         const loadedCount = renderedFiles.length;
         fileManager.fileCreate(file);
         syncPinnedPaths();
-        syncNoteColors();
         filteredFiles = getScopedFilteredFiles();
+        syncNoteColors();
         
         const newIndex = filteredFiles.findIndex((f) => f.path === file.path);
         if (newIndex >= 0 && newIndex <= loadedCount) {
@@ -271,8 +275,8 @@
         }
         plugin.removePinnedNotePath(file.path);
         syncPinnedPaths();
-        syncNoteColors();
         filteredFiles = getScopedFilteredFiles();
+        syncNoteColors();
         
         renderedFiles = renderedFiles.filter((f) => {
             return f.path !== file.path;
@@ -293,10 +297,10 @@
     async function togglePinned(file: TFile, pinned: boolean) {
         await plugin.setNotePinned(pinnedScopeKey, file, pinned);
         syncPinnedPaths();
-        syncNoteColors();
 
         const loadedCount = Math.max(renderedFiles.length, 1);
         filteredFiles = getScopedFilteredFiles();
+        syncNoteColors();
         renderedFiles = filteredFiles.slice(0, Math.min(loadedCount, filteredFiles.length));
         pruneVisibleNotes();
         if (renderedFiles.some((f) => f.path === file.path)) {

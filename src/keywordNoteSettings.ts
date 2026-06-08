@@ -54,6 +54,9 @@ export interface KeywordNotesSettings {
 
     /** Default accent color for notes without a per-note override */
     defaultNoteColor: string;
+
+    /** Use a stable random common color when a note does not have a per-note override */
+    useRandomNoteColors: boolean;
 }
 
 // Fruit icon list (shared by keywords and folders)
@@ -77,6 +80,7 @@ export const DEFAULT_SETTINGS: KeywordNotesSettings = {
     pinnedNotes: {},
     noteColors: {},
     defaultNoteColor: DEFAULT_NOTE_COLOR,
+    useRandomNoteColors: false,
 };
 
 export const NOTE_COLORS: Array<{ label: string; value: string | null }> = [
@@ -293,6 +297,18 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
                     })
             );
 
+        new Setting(containerEl)
+            .setName("Random colors for unmarked notes")
+            .setDesc("When enabled, notes without their own color use a stable color from the common color palette.")
+            .addToggle((toggle) =>
+                toggle
+                    .setValue(this.plugin.settings.useRandomNoteColors)
+                    .onChange((value) => {
+                        this.plugin.settings.useRandomNoteColors = value;
+                        this.plugin.refreshKeywordNoteViews();
+                        this.applySettingsUpdate();
+                    })
+            );
 
         new Setting(containerEl)
             .setName("New page folder")
