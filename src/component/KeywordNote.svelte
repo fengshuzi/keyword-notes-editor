@@ -110,6 +110,7 @@
             const fileName = file instanceof TFile ? file.basename : "unknown";
             
             [createdLeaf, createdEditor] = spawnLeafView(plugin, editorEl, leaf);
+            createdLeaf.parentLeaf = leaf;
             createdLeaf.setPinned(true);
 
             createdLeaf.setViewState({
@@ -130,7 +131,6 @@
                     }
                 }
             });
-            createdLeaf.parentLeaf = leaf;
 
             rendered = true;
             

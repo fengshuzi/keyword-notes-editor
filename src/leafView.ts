@@ -63,9 +63,10 @@ function nosuper<T>(base: ConstructableWithPrototype<T>): new () => T {
 }
 
 export const spawnLeafView = (plugin: KeywordNotesPlugin, initiatingEl?: HTMLElement, leaf?: WorkspaceLeaf, onShowCallback?: () => unknown): [WorkspaceLeaf, KeywordNoteEditor] => {
-    // When Obsidian doesn't have a recent leaf, use the caller leaf instead.
-    let parent = plugin.app.workspace.getMostRecentLeaf() as unknown as KeywordNoteEditorParent;
-    if (!parent) parent = leaf as unknown as KeywordNoteEditorParent;
+    // Keep embedded keyword editors parented to the keyword view leaf that created them.
+    // Using the most recent leaf can accidentally bind them to another plugin view.
+    let parent = leaf as unknown as KeywordNoteEditorParent;
+    if (!parent) parent = plugin.app.workspace.getMostRecentLeaf() as unknown as KeywordNoteEditorParent;
 
     if (!initiatingEl) initiatingEl = parent?.containerEl;
 

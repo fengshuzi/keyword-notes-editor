@@ -19,6 +19,7 @@ export function isEmebeddedLeaf(leaf: WorkspaceLeaf) {
 }
 
 interface KeywordNoteEditorViewInstance {
+    $destroy(): void;
     $set(props: Partial<{
         selectionMode: SelectionMode;
         target: string;
@@ -305,5 +306,9 @@ export class KeywordNoteView extends ItemView {
         }
     }
 
-
+    async onClose(): Promise<void> {
+        this.view?.$destroy();
+        this.view = undefined;
+        this.contentEl.empty();
+    }
 }

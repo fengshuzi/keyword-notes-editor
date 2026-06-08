@@ -9,9 +9,9 @@ import {
     WorkspaceLeaf,
     getAllTags,
     normalizePath,
-    Platform,
     TFolder,
     MarkdownFileInfo,
+    requireApiVersion,
 } from "obsidian";
 import type { EventRef } from "obsidian";
 
@@ -180,117 +180,42 @@ export default class KeywordNotesPlugin extends Plugin {
         return view instanceof KeywordNoteView && typeof view.setSelectionMode === "function";
     }
 
-    private async getOrCreateKeywordNoteView(): Promise<{ leaf: WorkspaceLeaf; view: KeywordNoteView }> {
-        if (Platform.isMobile) {
-            const existingLeaves = this.app.workspace.getLeavesOfType(KEYWORD_NOTE_VIEW_TYPE);
-            const leaf = existingLeaves[0] ?? this.app.workspace.getMostRecentLeaf() ?? this.app.workspace.getLeaf(false);
+    private async openKeywordNoteView(configure: (view: KeywordNoteView) => void): Promise<void> {
+        const workspace = this.app.workspace;
+        workspace.detachLeavesOfType(KEYWORD_NOTE_VIEW_TYPE);
 
-            for (const duplicate of existingLeaves.slice(1)) {
-                duplicate.detach();
-            }
-
-            await leaf.setViewState({ type: KEYWORD_NOTE_VIEW_TYPE });
-            await leaf.loadIfDeferred();
-
-            if (!this.isKeywordNoteView(leaf.view)) {
-                throw new Error("Keyword Notes Editor: failed to create mobile keyword note view.");
-            }
-
-            return { leaf, view: leaf.view };
-        }
-
-        const leaves = this.app.workspace.getLeavesOfType(KEYWORD_NOTE_VIEW_TYPE);
-
-        for (const leaf of leaves) {
-            await leaf.loadIfDeferred();
-
-            if (this.isKeywordNoteView(leaf.view)) {
-                return { leaf, view: leaf.view };
-            }
-
-            await leaf.setViewState({ type: KEYWORD_NOTE_VIEW_TYPE });
-            await leaf.loadIfDeferred();
-
-            if (this.isKeywordNoteView(leaf.view)) {
-                return { leaf, view: leaf.view };
-            }
-
-            console.warn("Keyword Notes Editor: skipping invalid keyword note leaf", leaf.view);
-        }
-
-        const leaf = this.app.workspace.getLeaf(true);
-        await leaf.setViewState({ type: KEYWORD_NOTE_VIEW_TYPE });
+        const leaf = workspace.getLeaf(true);
+        await leaf.setViewState({ type: KEYWORD_NOTE_VIEW_TYPE, active: true });
         await leaf.loadIfDeferred();
 
         if (!this.isKeywordNoteView(leaf.view)) {
             throw new Error("Keyword Notes Editor: failed to create keyword note view.");
         }
 
-        return { leaf, view: leaf.view };
-    }
-
-    private async revealKeywordNoteLeaf(leaf: WorkspaceLeaf, view: KeywordNoteView): Promise<void> {
-        const workspace = this.app.workspace;
-
-        if (!Platform.isMobile) {
-            await workspace.revealLeaf(leaf);
-            return;
-        }
-
-        workspace.leftSplit?.collapse();
-        workspace.rightSplit?.collapse();
-
+        configure(leaf.view);
+        workspace.setActiveLeaf(leaf, { focus: true });
         await workspace.revealLeaf(leaf);
-
-        // Obsidian Mobile can leave a custom view as a blank tab after revealLeaf()
-        // until the user opens the tab switcher. Force the same activation/layout pass.
-        workspace.setActiveLeaf(leaf, { focus: true });
-        workspace.onLayoutChange();
-
-        await new Promise<void>((resolve) => {
-            window.requestAnimationFrame(() => {
-                window.requestAnimationFrame(() => resolve());
-            });
-        });
-
-        workspace.setActiveLeaf(leaf, { focus: true });
-        workspace.onLayoutChange();
-        view.refresh();
-
-        window.setTimeout(() => {
-            workspace.setActiveLeaf(leaf, { focus: true });
-            workspace.onLayoutChange();
-            view.refresh();
-        }, 350);
     }
-
-    // IMPORTANT: 所有 open*View 方法必须复用已有的 KEYWORD_NOTE_VIEW_TYPE leaf，
-    // 而非每次 getLeaf(true) 创建新 leaf。原因：Obsidian 对同类型 view 连续调用
-    // getLeaf(true) + setViewState 行为不稳定，会导致视图不切换。
-    // 正确做法：找到已有 leaf → 更新查询条件 → 由 Svelte 视图重建列表 → revealLeaf。
 
     // Open keyword view (includes sub-tags by default)
     async openKeywordView(keyword: KeywordConfig) {
         const target = this.getKeywordTarget(keyword);
-        const { leaf, view } = await this.getOrCreateKeywordNoteView();
 
-        view.setSelectionMode("tag", target);
-        view.setTimeField("mtime");
-        view.setIncludeSubTags(true);
-        view.setKeywordDisplay(keyword);
-
-        await this.revealKeywordNoteLeaf(leaf, view);
+        await this.openKeywordNoteView((view) => {
+            view.setSelectionMode("tag", target);
+            view.setTimeField("mtime");
+            view.setIncludeSubTags(true);
+            view.setKeywordDisplay(keyword);
+        });
     }
 
     // Open sub-tag view (includeSubTags=true also includes deeper sub-tags)
     async openSubTagView(subTag: string, includeSubTags = false) {
-        const { leaf, view } = await this.getOrCreateKeywordNoteView();
-
-        view.setSelectionMode("tag", subTag);
-        view.setTimeField("mtime");
-        view.setIncludeSubTags(includeSubTags);
-
-        await this.revealKeywordNoteLeaf(leaf, view);
+        await this.openKeywordNoteView((view) => {
+            view.setSelectionMode("tag", subTag);
+            view.setTimeField("mtime");
+            view.setIncludeSubTags(includeSubTags);
+        });
     }
 
     // 获取某个关键词下的所有子标签（如 test → ['test/work', 'test/ideas']）
@@ -316,33 +241,27 @@ export default class KeywordNotesPlugin extends Plugin {
 
     // 打开文件夹视图
     async openFolderView(folder: FolderConfig) {
-        const { leaf, view } = await this.getOrCreateKeywordNoteView();
-
-        view.setSelectionMode("folder", folder.path);
-        view.setTimeField("mtime");
-        view.setFolderDisplay(folder);
-
-        await this.revealKeywordNoteLeaf(leaf, view);
+        await this.openKeywordNoteView((view) => {
+            view.setSelectionMode("folder", folder.path);
+            view.setTimeField("mtime");
+            view.setFolderDisplay(folder);
+        });
     }
 
     async openTagView(tagName: string, timeField: TimeField = "mtime") {
-        const { leaf, view } = await this.getOrCreateKeywordNoteView();
-
-        view.setSelectionMode("tag", tagName);
-        view.setTimeField(timeField);
-
-        await this.revealKeywordNoteLeaf(leaf, view);
+        await this.openKeywordNoteView((view) => {
+            view.setSelectionMode("tag", tagName);
+            view.setTimeField(timeField);
+        });
     }
 
     async openOverviewView(target: OverviewTarget) {
-        const { leaf, view } = await this.getOrCreateKeywordNoteView();
-
-        view.setSelectionMode("overview", target);
-        view.setTimeField("mtime");
-        view.setIncludeSubTags(false);
-        view.setOverviewDisplay(target);
-
-        await this.revealKeywordNoteLeaf(leaf, view);
+        await this.openKeywordNoteView((view) => {
+            view.setSelectionMode("overview", target);
+            view.setTimeField("mtime");
+            view.setIncludeSubTags(false);
+            view.setOverviewDisplay(target);
+        });
     }
 
     // 获取包含指定标签的所有文件
@@ -402,7 +321,7 @@ export default class KeywordNotesPlugin extends Plugin {
     }
 
     patchWorkspace() {
-        let layoutChanging = false; void layoutChanging;
+        let layoutChanging = false;
         const wrapper = {
             getActiveViewOfType: (next: (...args: unknown[]) => unknown) =>
                 function (this: Workspace, t: ViewConstructor) {
@@ -435,24 +354,30 @@ export default class KeywordNotesPlugin extends Plugin {
                     if (Reflect.apply(oldFn, this, [arg1, arg2]) as boolean) return true;
 
                     const cb = typeof arg1 === "function" ? arg1 : arg2;
+                    const parent = typeof arg1 === "function" ? arg2 : arg1;
                     if (!cb) return false;
-                    return KeywordNoteEditor.iteratePopoverLeaves(
-                        this,
-                        cb
-                    );
+                    if (!parent) return false;
+                    if (layoutChanging) return false;
+
+                    if (!requireApiVersion("0.15.0") && parent === this.rootSplit) {
+                        return KeywordNoteEditor.iteratePopoverLeaves(this, cb);
+                    }
+
+                    return false;
                 },
             setActiveLeaf: (next: (...args: unknown[]) => unknown) =>
                 function (this: Workspace, e: WorkspaceLeaf, t?: WorkspaceSetActiveParams) {
                     const setFn = next as (this: Workspace, leaf: WorkspaceLeaf, params?: WorkspaceSetActiveParams) => void;
                     const leaf = e as LeafWithParent;
-                    if (isKeywordNoteLeaf(e) && leaf.parentLeaf) {
-                        leaf.parentLeaf.activeTime = 1700000000000;
-                        setFn.call(this, leaf.parentLeaf, t ?? {});
+                    const parentLeaf = leaf.parentLeaf;
+                    if (parentLeaf) {
+                        parentLeaf.activeTime = Date.now();
+                        setFn.call(this, parentLeaf, t ?? {});
                         const editMode = (e.view as MarkdownViewLike)?.editMode;
                         if (editMode) {
                             this.activeEditor = e.view as unknown as MarkdownFileInfo;
-                            if (leaf.parentLeaf.view) {
-                                leaf.parentLeaf.view.editMode = e.view;
+                            if (parentLeaf.view) {
+                                parentLeaf.view.editMode = e.view;
                             }
                         }
                         return;
@@ -834,7 +759,6 @@ export default class KeywordNotesPlugin extends Plugin {
     }
 
     private async openKeywordViewForTag(tag: string): Promise<void> {
-        const { leaf, view } = await this.getOrCreateKeywordNoteView();
         const tagLower = tag.toLowerCase();
         const rootTag = tagLower.includes("/") ? tagLower.split("/")[0] : tagLower;
         const keyword = this.settings.keywords.find(k => {
@@ -844,13 +768,13 @@ export default class KeywordNotesPlugin extends Plugin {
             return tagLower === k.keyword || tagLower.startsWith(k.keyword + "/") || rootTag === k.keyword;
         });
 
-        view.setSelectionMode("tag", tagLower);
-        view.setTimeField("mtime");
-        view.setIncludeSubTags(true);
-        if (keyword) {
-            view.setKeywordDisplay(keyword);
-        }
-
-        await this.revealKeywordNoteLeaf(leaf, view);
+        await this.openKeywordNoteView((view) => {
+            view.setSelectionMode("tag", tagLower);
+            view.setTimeField("mtime");
+            view.setIncludeSubTags(true);
+            if (keyword) {
+                view.setKeywordDisplay(keyword);
+            }
+        });
     }
 }
