@@ -126,7 +126,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
     }
 
     static activePopovers(ws: Workspace) {
-        return this.activeWindows(ws).flatMap(this.popoversForWindow);
+        return this.activeWindows(ws).flatMap((win) => this.popoversForWindow(win));
     }
 
     static popoversForWindow(win?: Window) {
@@ -299,7 +299,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
 
     onload(): void {
         super.onload();
-        this.registerEvent(this.plugin.app.workspace.on("layout-change", this.updateLeaves, this));
+        this.registerEvent(this.plugin.app.workspace.on("layout-change", () => this.updateLeaves()));
         this.registerEvent(this.plugin.app.workspace.on("layout-change", () => {
             // Ensure that top-level items in a popover are not tabbed
             const children = (this.rootSplit as WorkspaceParentWithChildren).children ?? [];

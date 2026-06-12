@@ -389,7 +389,7 @@ export default class KeywordNotesPlugin extends Plugin {
             iterateLeaves: (old: (...args: unknown[]) => unknown) =>
                 function (this: Workspace, arg1: WorkspaceItem | LeafIterator, arg2?: LeafIterator) {
                     const oldFn = old as (this: Workspace, arg1: LeafIterator | WorkspaceItem, arg2?: LeafIterator) => boolean;
-                    if (Reflect.apply(oldFn, this, [arg1, arg2]) as boolean) return true;
+                    if (Reflect.apply(oldFn, this, [arg1, arg2])) return true;
 
                     const cb = typeof arg1 === "function" ? arg1 : arg2;
                     const parent = typeof arg1 === "function" ? arg2 : arg1;
