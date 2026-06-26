@@ -306,14 +306,15 @@ body.keyword-notes-hide-backlinks .keyword-note-view .embedded-backlinks {
 .keyword-list-tree-wrapper {
     display: flex;
     flex-direction: column;
-    margin-top: 12px;
+    margin-top: 0;
 }
 
 .keyword-list-tree-title {
     display: flex;
     align-items: center;
     gap: 7px;
-    padding: 6px 10px 8px 10px;
+    min-height: var(--kw-list-row-height);
+    padding: 0 10px 0 8px;
     color: var(--text-muted);
     cursor: pointer;
     font-size: var(--font-ui-medium);
