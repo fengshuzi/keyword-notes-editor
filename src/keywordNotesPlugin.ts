@@ -436,7 +436,7 @@ export default class KeywordNotesPlugin extends Plugin {
             around(WorkspaceLeaf.prototype, {
                 getRoot(old: (this: WorkspaceLeaf) => WorkspaceItem & { getRoot?: () => WorkspaceItem }) {
                     return function (this: WorkspaceLeaf) {
-                        const root = Reflect.apply(old, this, []) as WorkspaceItem & { getRoot?: () => WorkspaceItem };
+                        const root = Reflect.apply(old, this, []);
                         if (!isKeywordNoteLeaf(this)) return root;
                         const top = root;
                         return top?.getRoot === this.getRoot

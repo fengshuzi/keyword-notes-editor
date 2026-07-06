@@ -549,7 +549,7 @@ export class KeywordNoteEditor extends nosuper(HoverPopover) {
         this.onShowCallback = () => {
             if (this.detaching) return;
             callback();
-            if (typeof existingCallback === "function") (existingCallback as () => void)();
+            if (typeof existingCallback === "function") existingCallback();
         };
         if (this.state === PopoverState.Shown) {
             this.onShowCallback();
