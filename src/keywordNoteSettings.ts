@@ -405,7 +405,12 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
         new Setting(donateSection).setName('☕ Buy me a coffee').setHeading();
         donateSection.createEl('p', { text: 'If this plugin helped you, consider buying me a coffee ☕', cls: 'plugin-donate-desc' });
         const imgWrap = donateSection.createDiv({ cls: 'plugin-donate-qr' });
-        imgWrap.createEl('img', { attr: { src: "https://raw.githubusercontent.com/fengshuzi/images/main/wechat-donate.jpg", alt: 'WeChat Donate', width: '160' } });
+        const donateImg = imgWrap.createEl('img', { attr: { src: "https://raw.githubusercontent.com/fengshuzi/images/main/wechat-donate.jpg", alt: 'WeChat Donate' }, cls: 'plugin-donate-img' });
+        donateImg.addEventListener('click', () => {
+            const overlay = document.body.createDiv({ cls: 'plugin-donate-lightbox' });
+            overlay.createEl('img', { attr: { src: "https://raw.githubusercontent.com/fengshuzi/images/main/wechat-donate.jpg", alt: 'WeChat Donate' }, cls: 'plugin-donate-lightbox-img' });
+            overlay.addEventListener('click', () => overlay.remove());
+        });
         imgWrap.createEl('p', { text: 'Scan to donate', cls: 'plugin-donate-label' });
     }
 
