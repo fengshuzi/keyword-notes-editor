@@ -1,6 +1,11 @@
 import { TFile, moment, App, getAllTags } from "obsidian";
 import type { CachedMetadata, ListItemCache, TagCache } from "obsidian";
+import type { Moment } from "moment";
 import { OverviewTarget, TimeRange, TimeField } from "../types/time";
+
+function toMoment(input?: number | Date | string): Moment {
+    return (moment as unknown as (inp?: number | Date | string) => Moment)(input);
+}
 
 type BaseTimeField = "ctime" | "mtime" | "name";
 
@@ -294,7 +299,7 @@ export class FileManager {
     }
 
     private isTodayTimestamp(timestamp: number): boolean {
-        return moment(timestamp).isSame(moment(), "day");
+        return toMoment(timestamp).isSame(toMoment(), "day");
     }
 
     private isJournalFile(file: TFile): boolean {
@@ -315,7 +320,7 @@ export class FileManager {
             return true;
         }
 
-        const today = moment();
+        const today = toMoment();
         const candidates = [
             today.format("YYYY-MM-DD"),
             today.format("YYYYMMDD"),
@@ -335,16 +340,16 @@ export class FileManager {
             this.options.timeField
         );
 
-        let now = moment();
-        let cutoff: moment.Moment;
+        let now = toMoment();
+        let cutoff: Moment;
 
         if (this.options.timeRange === "custom" && this.options.customRange) {
             // Custom range: filter files between start and end date
-            const startDate = moment(this.options.customRange.start);
-            const endDate = moment(this.options.customRange.end);
+            const startDate = toMoment(this.options.customRange.start);
+            const endDate = toMoment(this.options.customRange.end);
 
             this.filteredFiles = this.allFiles.filter((file) => {
-                const fileTime = moment(this.getFileTimestamp(file, baseTimeField));
+                const fileTime = toMoment(this.getFileTimestamp(file, baseTimeField));
                 return fileTime.isBetween(startDate, endDate, 'day', '[]');
             });
             return;
@@ -390,7 +395,7 @@ export class FileManager {
         }
 
         this.filteredFiles = this.allFiles.filter((file) => {
-            const fileTime = moment(this.getFileTimestamp(file, baseTimeField));
+            const fileTime = toMoment(this.getFileTimestamp(file, baseTimeField));
             return fileTime.isAfter(cutoff);
         });
 

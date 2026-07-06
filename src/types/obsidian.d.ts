@@ -1,5 +1,4 @@
 import "obsidian";
-import type moment from "moment";
 import { Plugin, SuggestModal, TFile, View, WorkspaceContainer, WorkspaceLeaf, WorkspaceSplit } from "obsidian";
 
 interface InternalPlugins {
@@ -56,8 +55,6 @@ declare global {
 }
 
 declare module "obsidian" {
-    export const moment: typeof moment;
-
     interface App {
         internalPlugins: {
             plugins: InternalPlugins;
