@@ -3,8 +3,8 @@ import type { CachedMetadata, ListItemCache, TagCache } from "obsidian";
 import type { Moment } from "moment";
 import { OverviewTarget, TimeRange, TimeField } from "../types/time";
 
-function toMoment(input?: number | Date | string): Moment {
-    return (moment as unknown as (inp?: number | Date | string) => Moment)(input);
+function toMoment(input?: number | Date | string | Moment): Moment {
+    return (moment as unknown as (inp?: number | Date | string | Moment) => Moment)(input);
 }
 
 type BaseTimeField = "ctime" | "mtime" | "name";
@@ -195,10 +195,10 @@ export class FileManager {
         const target = this.options.target as OverviewTarget | undefined;
         if (target === "today") {
             this.fetchTodayFiles();
-        } else if (target === "recent-edited") {
-            this.fetchRecentEditedFiles();
-        } else if (target === "tasks") {
+        } else if (target === "todo") {
             this.fetchTaskFiles();
+        } else if (target?.startsWith("recent:")) {
+            this.fetchRecentEditedFiles(target.slice("recent:".length));
         } else if (target === "read-later") {
             this.fetchReadLaterFiles();
         } else if (target === "important-urgent") {
@@ -229,13 +229,27 @@ export class FileManager {
         ];
     }
 
-    private fetchRecentEditedFiles(): void {
+    private fetchRecentEditedFiles(value: string): void {
         if (!this.options.app) return;
 
+        const now = toMoment();
+        const startOfToday = toMoment().startOf("day");
+
+        this.allFiles = this.options.app.vault.getMarkdownFiles().filter((file) => {
+            const mtime = toMoment(file.stat.mtime);
+            if (value === "yesterday") {
+                // Strictly yesterday 00:00 - 24:00
+                return mtime.isSame(toMoment().subtract(1, "day"), "day");
+            }
+            const days = Math.max(1, Number.parseInt(value, 10) || 1);
+            // Last N calendar days including today
+            return !mtime.isAfter(now) && !mtime.isBefore(toMoment(startOfToday).subtract(days - 1, "days"));
+        });
+
         this.allFiles = this.sortFilesByTimeField(
-            this.options.app.vault.getMarkdownFiles(),
-            "mtime"
-        ).slice(0, 10);
+            this.allFiles,
+            this.options.timeField
+        );
     }
 
     private fetchTaskFiles(): void {

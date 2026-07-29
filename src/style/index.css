@@ -93,17 +93,6 @@
     overflow-x: hidden;
 }
 
-body.keyword-notes-hide-frontmatter
-    .keyword-note-view
-    .markdown-source-view.is-live-preview.show-properties
-    .metadata-container {
-    display: none;
-}
-
-body.keyword-notes-hide-backlinks .keyword-note-view .embedded-backlinks {
-    display: none;
-}
-
 /* Preset management styles */
 .preset-container {
     margin-bottom: var(--size-4-4);
@@ -567,6 +556,161 @@ body.keyword-notes-hide-backlinks .keyword-note-view .embedded-backlinks {
 .kw-settings-textarea-sm {
     width: 100%;
     height: 80px;
+}
+
+/* Settings page cards */
+.kw-settings-card {
+    background: var(--background-secondary);
+    border-radius: 10px;
+    padding: 8px 16px 16px;
+    margin-bottom: 16px;
+}
+
+.kw-settings-card .setting-item-heading {
+    border-top: none;
+    padding-top: 10px;
+}
+
+.kw-settings-card .setting-item:last-child {
+    border-bottom: none;
+}
+
+/* Sidebar entry rows (settings) */
+.kw-entries-desc {
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+    line-height: 1.6;
+    margin: 4px 0 12px;
+}
+
+.kw-entries-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.kw-entry-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    padding: 6px 8px;
+}
+
+.kw-entry-row.is-dragging {
+    opacity: 0.4;
+}
+
+.kw-entry-row.is-drop-target {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 2px 0 0 var(--interactive-accent);
+}
+
+.kw-entry-drag {
+    cursor: grab;
+    color: var(--text-faint);
+    padding: 0 4px;
+    user-select: none;
+    flex: none;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.kw-entry-drag:active {
+    cursor: grabbing;
+}
+
+.kw-entry-row input[type="text"],
+.kw-entry-row input[type="number"],
+.kw-entry-row select {
+    height: 30px;
+    padding: 0 8px;
+    border-radius: 6px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+    font-size: var(--font-ui-small);
+    margin: 0;
+}
+
+.kw-entry-row input:focus,
+.kw-entry-row select:focus {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 1px var(--interactive-accent);
+    outline: none;
+}
+
+.kw-entry-name {
+    flex: 0 0 150px;
+}
+
+.kw-entry-type {
+    flex: 0 0 auto;
+    min-width: 110px;
+}
+
+.kw-entry-value-wrap {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 40px;
+}
+
+.kw-entry-value-wrap .kw-entry-value {
+    flex: 1 1 auto;
+    min-width: 40px;
+}
+
+.kw-entry-recent-preset {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.kw-entry-recent-days {
+    width: 64px;
+    flex: none;
+}
+
+.kw-entry-del {
+    flex: none;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    font-size: 15px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.kw-entry-del:hover {
+    color: var(--text-error);
+    background: var(--background-modifier-hover);
+}
+
+.kw-entry-add {
+    width: 100%;
+    padding: 7px 0;
+    border-radius: 8px;
+    border: 1px dashed var(--background-modifier-border);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: var(--font-ui-small);
+}
+
+.kw-entry-add:hover {
+    color: var(--text-normal);
+    border-color: var(--interactive-accent);
+    background: var(--background-modifier-hover);
 }
 
 /* 覆盖主题对文档内联标题的染色 */

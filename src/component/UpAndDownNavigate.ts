@@ -148,10 +148,12 @@ function navigateToAdjacentLeaf(
 }
 
 /**
- * Check if frontmatter is hidden in the current view
+ * Check if frontmatter is hidden in the current view.
+ * Follows Obsidian's own "Show frontmatter" editor setting.
  */
 function isFrontmatterHidden(plugin: KeywordNotesPlugin): boolean {
-    return plugin.settings?.hideFrontmatter === true;
+    const vaultConfig = plugin.app.vault as unknown as { getConfig?: (key: string) => unknown };
+    return vaultConfig.getConfig?.("showFrontmatter") === false;
 }
 
 /**

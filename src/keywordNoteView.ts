@@ -98,10 +98,11 @@ export class KeywordNoteView extends ItemView {
         }
         if (this.selectionMode === "overview") {
             if (this.target === "important-urgent") return "重要且紧急";
-            if (this.target === "recent-edited") return "最近编辑";
-            if (this.target === "tasks") return "待办事项";
             if (this.target === "read-later") return "稍后读";
-            return "今天";
+            if (this.target === "todo") return "待办事项";
+            if (this.target === "today") return "今天";
+            if (this.target.startsWith("recent:")) return "最近编辑";
+            return "关键词笔记";
         }
         return "关键词笔记";
     }
@@ -126,17 +127,17 @@ export class KeywordNoteView extends ItemView {
         this.leaf.updateHeader();
     }
 
-    setOverviewDisplay(target: OverviewTarget) {
+    setOverviewDisplay(target: OverviewTarget, alias?: string) {
         if (target === "important-urgent") {
-            this.overviewDisplay = { target, alias: "重要且紧急", icon: "🔥" };
-        } else if (target === "recent-edited") {
-            this.overviewDisplay = { target, alias: "最近编辑", icon: "🕘" };
-        } else if (target === "tasks") {
-            this.overviewDisplay = { target, alias: "待办事项", icon: "☑️" };
+            this.overviewDisplay = { target, alias: alias || "重要且紧急", icon: "🔥" };
+        } else if (target === "todo") {
+            this.overviewDisplay = { target, alias: alias || "待办事项", icon: "☑️" };
+        } else if (target.startsWith("recent:")) {
+            this.overviewDisplay = { target, alias: alias || "最近编辑", icon: "🕘" };
         } else if (target === "read-later") {
-            this.overviewDisplay = { target, alias: "稍后读", icon: "📖" };
+            this.overviewDisplay = { target, alias: alias || "稍后读", icon: "📖" };
         } else {
-            this.overviewDisplay = { target, alias: "今天", icon: "📅" };
+            this.overviewDisplay = { target, alias: alias || "今天", icon: "📅" };
         }
         this.keywordDisplay = null;
         this.folderDisplay = null;
@@ -221,13 +222,13 @@ export class KeywordNoteView extends ItemView {
                 this.selectionMode === "overview" &&
                 (
                     this.target === "today" ||
-                    this.target === "recent-edited" ||
                     this.target === "important-urgent" ||
-                    this.target === "tasks" ||
-                    this.target === "read-later"
+                    this.target === "todo" ||
+                    this.target === "read-later" ||
+                    this.target.startsWith("recent:")
                 )
             ) {
-                this.setOverviewDisplay(this.target);
+                this.setOverviewDisplay(this.target as OverviewTarget);
             }
 
             // View is created in onOpen(); update its props if already mounted

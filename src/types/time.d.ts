@@ -12,7 +12,7 @@ export type TimeRange =
 
 export type SelectionMode = "folder" | "tag" | "overview";
 
-export type OverviewTarget = "today" | "recent-edited" | "tasks" | "read-later" | "important-urgent";
+export type OverviewTarget = "today" | "todo" | "read-later" | "important-urgent" | `recent:${string}`;
 
 export type TimeField =
     | "ctime"

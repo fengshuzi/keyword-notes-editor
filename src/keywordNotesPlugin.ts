@@ -27,6 +27,9 @@ import {
     NOTE_COLORS,
     KeywordConfig,
     FolderConfig,
+    SidebarEntry,
+    entryToKeywordConfig,
+    entryToFolderConfig,
 } from "./keywordNoteSettings";
 import { OverviewTarget, TimeField } from "./types/time";
 import { createUpDownNavigationExtension } from "./component/UpAndDownNavigate";
@@ -76,14 +79,12 @@ export default class KeywordNotesPlugin extends Plugin {
         addIconList();
 
         // Register the up and down navigation extension
-        if (this.settings.useArrowUpOrDownToNavigate) {
-            this.registerEditorExtension([
-                createUpDownNavigationExtension({
-                    app: this.app,
-                    plugin: this,
-                }),
-            ]);
-        }
+        this.registerEditorExtension([
+            createUpDownNavigationExtension({
+                app: this.app,
+                plugin: this,
+            }),
+        ]);
 
         this.registerView(
             KEYWORD_NOTE_VIEW_TYPE,
@@ -124,8 +125,6 @@ export default class KeywordNotesPlugin extends Plugin {
     }
 
     onunload() {
-        activeDocument.body.toggleClass("keyword-notes-hide-frontmatter", false);
-        activeDocument.body.toggleClass("keyword-notes-hide-backlinks", false);
         activeDocument.body.style.removeProperty("--keyword-notes-default-color");
     }
 
@@ -293,12 +292,33 @@ export default class KeywordNotesPlugin extends Plugin {
         });
     }
 
-    async openOverviewView(target: OverviewTarget) {
+    /** Open a fixed doc entry; creates the note on first click */
+    async openDocEntry(path: string): Promise<void> {
+        let normalized = normalizePath(path.trim());
+        if (!normalized) return;
+        if (!normalized.endsWith(".md")) normalized += ".md";
+
+        let file = this.app.vault.getAbstractFileByPath(normalized);
+        if (!file) {
+            try {
+                const parent = normalized.split("/").slice(0, -1).join("/");
+                if (parent) await this.ensureFolderExists(parent);
+                file = await this.app.vault.create(normalized, "");
+            } catch (error) {
+                console.error("Keyword Notes Editor: failed to create doc", error);
+                return;
+            }
+        }
+        if (!(file instanceof TFile)) return;
+        await this.app.workspace.getLeaf(false).openFile(file);
+    }
+
+    async openOverviewView(target: OverviewTarget, alias?: string) {
         await this.openKeywordNoteView((view) => {
             view.setSelectionMode("overview", target);
             view.setTimeField("mtime");
             view.setIncludeSubTags(false);
-            view.setOverviewDisplay(target);
+            view.setOverviewDisplay(target, alias);
         });
     }
 
@@ -324,15 +344,33 @@ export default class KeywordNotesPlugin extends Plugin {
         return files;
     }
 
+    /** True when at least one note links to (or mentions) this file */
+    hasAnyBacklink(file: TFile): boolean {
+        const metadataCache = this.app.metadataCache as unknown as {
+            resolvedLinks?: Record<string, Record<string, number>>;
+            unresolvedLinks?: Record<string, Record<string, number>>;
+            getBacklinksForFile?: (f: TFile) => { count?: number; data?: Map<string, unknown> };
+        };
+
+        if (typeof metadataCache.getBacklinksForFile === "function") {
+            try {
+                const backlinks = metadataCache.getBacklinksForFile(file);
+                if (typeof backlinks.count === "number") return backlinks.count > 0;
+                if (backlinks.data instanceof Map) return backlinks.data.size > 0;
+            } catch (error) {
+                console.debug("Keyword Notes Editor: getBacklinksForFile failed", error);
+            }
+        }
+
+        const target = file.path;
+        const hasResolved = Object.values(metadataCache.resolvedLinks ?? {})
+            .some(links => Object.prototype.hasOwnProperty.call(links, target));
+        if (hasResolved) return true;
+        return Object.values(metadataCache.unresolvedLinks ?? {})
+            .some(links => Object.prototype.hasOwnProperty.call(links, target));
+    }
+
     initCssRules() {
-        activeDocument.body.toggleClass(
-            "keyword-notes-hide-frontmatter",
-            this.settings.hideFrontmatter
-        );
-        activeDocument.body.toggleClass(
-            "keyword-notes-hide-backlinks",
-            this.settings.hideBacklinks
-        );
         this.applyDefaultNoteColor();
     }
 
@@ -513,41 +551,58 @@ export default class KeywordNotesPlugin extends Plugin {
             DEFAULT_SETTINGS,
             storedSettings
         );
+        this.migrateSidebarEntries();
         
         // Reassign icons to ensure keywords and folders do not have duplicate icons
         this.reassignIcons();
         this.prunePinnedNotes();
     }
     
+    // Migrate legacy keywords/folders arrays into sidebarEntries on first run
+    private migrateSidebarEntries() {
+        if (this.settings.sidebarEntries) return;
+        const entries: SidebarEntry[] = [];
+        (this.settings.keywords || []).forEach(k => {
+            const value = (k.keywords && k.keywords.length > 1) ? k.keywords.join("+") : k.keyword;
+            entries.push({ type: "keyword", alias: k.alias, value, icon: k.icon });
+        });
+        (this.settings.folders || []).forEach(f => {
+            entries.push({ type: "folder", alias: f.alias, value: f.path, icon: f.icon });
+        });
+        this.settings.sidebarEntries = entries;
+        void this.saveSettings();
+    }
+
+    /** Legacy view: keyword entries mapped to KeywordConfig, for tag lookup helpers */
+    getKeywordConfigs(): KeywordConfig[] {
+        return (this.settings.sidebarEntries ?? [])
+            .filter(e => e.type === "keyword" && e.value)
+            .map(entryToKeywordConfig);
+    }
+
+    /** Legacy view: folder entries mapped to FolderConfig */
+    getFolderConfigs(): FolderConfig[] {
+        return (this.settings.sidebarEntries ?? [])
+            .filter(e => e.type === "folder" && e.value)
+            .map(entryToFolderConfig);
+    }
+
     // Reassign icons to avoid duplicates
     private reassignIcons() {
-        const FRUIT_ICONS = ['🍎', '🍏', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐', '🍈', '🍒', '🍑', '🥭', '🍍', '🥥', '🥝', '🍅', '🥑', '🌽', '🥕', '🥦', '🌰'];
+        const FRUIT_ICONS = [
+    // 水果
+    '🍎', '🍏', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐',
+    '🍈', '🍒', '🍑', '🥭', '🍍', '🥥', '🥝', '🍅',
+    // 蔬菜
+    '🥑', '🍆', '🥔', '🍠', '🌽', '🥕', '🫒', '🌶️', '🫑', '🥒',
+    '🥬', '🥦', '🧄', '🧅', '🍄', '🌰',
+];
         
-        // 收集已使用的自定义图标
-        const usedIcons: string[] = []; void usedIcons;
-        
-        // 先处理有自定义图标的项
-        this.settings.keywords.forEach(k => {
-            if (k.icon && FRUIT_ICONS.includes(k.icon)) {
-                // 检查是否是用户手动设置的（通过配置字符串中是否有第三个参数判断）
-                // 这里简化处理：如果图标在列表中，先标记为已使用
-            }
-        });
-        
-        // 为关键词分配图标
+        // 所有类型的条目都从水果图标池分配图标
         let iconIndex = 0;
-        this.settings.keywords.forEach((k, index) => { void index;
-            // 如果没有自定义图标，分配一个
-            if (!k.icon || FRUIT_ICONS.includes(k.icon)) {
-                k.icon = FRUIT_ICONS[iconIndex % FRUIT_ICONS.length];
-                iconIndex++;
-            }
-        });
-        
-        // 为文件夹分配图标（从关键词之后继续）
-        this.settings.folders.forEach((f, index) => { void index;
-            if (!f.icon || FRUIT_ICONS.includes(f.icon)) {
-                f.icon = FRUIT_ICONS[iconIndex % FRUIT_ICONS.length];
+        (this.settings.sidebarEntries ?? []).forEach(e => {
+            if (!e.icon || FRUIT_ICONS.includes(e.icon)) {
+                e.icon = FRUIT_ICONS[iconIndex % FRUIT_ICONS.length];
                 iconIndex++;
             }
         });
@@ -799,7 +854,7 @@ export default class KeywordNotesPlugin extends Plugin {
     private async openKeywordViewForTag(tag: string): Promise<void> {
         const tagLower = tag.toLowerCase();
         const rootTag = tagLower.includes("/") ? tagLower.split("/")[0] : tagLower;
-        const keyword = this.settings.keywords.find(k => {
+        const keyword = this.getKeywordConfigs().find(k => {
             if (k.keywords && k.keywords.length > 0) {
                 return k.keywords.some(kw => tagLower === kw || tagLower.startsWith(kw + "/"));
             }

@@ -119,7 +119,7 @@
                     file: file.path,
                     mode: "source",
                     source: false,
-                    backlinks: !plugin.settings.hideBacklinks,
+                    backlinks: plugin.hasAnyBacklink(file),
                     backlinkOpts: {
                         collapseAll: false,
                         extraContext: false,

@@ -1,6 +1,7 @@
 import { ItemView, WorkspaceLeaf, Menu, setIcon } from "obsidian";
 import type KeywordNotesPlugin from "./keywordNotesPlugin";
-import type { KeywordConfig, FolderConfig } from "./keywordNoteSettings";
+import type { KeywordConfig, FolderConfig, SidebarEntry } from "./keywordNoteSettings";
+import { ENTRY_TYPE_META, entryToKeywordConfig, entryToFolderConfig } from "./keywordNoteSettings";
 import type { OverviewTarget, SelectionMode } from "./types/time";
 
 export const KEYWORD_LIST_VIEW_TYPE = "keyword-list-view";
@@ -114,29 +115,34 @@ export class KeywordListView extends ItemView {
     private renderList(): void {
         this.listEl.empty();
 
-        const { keywords, folders } = this.plugin.settings;
+        const entries = this.plugin.settings.sidebarEntries ?? [];
 
         this.renderOverviewSection();
 
-        keywords.forEach((item) => {
-            const subTags = this.plugin.getSubTagsForKeyword(item.keyword);
-            if (subTags.length > 0) {
-                this.renderKeywordWithTree(item, subTags);
-            } else {
-                this.renderItem(item, "keyword");
+        entries.forEach((entry) => {
+            if (entry.type === "keyword" && entry.value) {
+                const item = entryToKeywordConfig(entry);
+                const subTags = this.plugin.getSubTagsForKeyword(item.keyword);
+                if (subTags.length > 0) {
+                    this.renderKeywordWithTree(item, subTags);
+                } else {
+                    this.renderItem(item, "keyword");
+                }
+            } else if (entry.type === "folder" && entry.value) {
+                this.renderItem(entryToFolderConfig(entry), "folder");
+            } else if (entry.type === "doc" && entry.value) {
+                this.renderDocItem(entry);
+            } else if (entry.type === "recent" || entry.type === "todo") {
+                this.renderOverviewEntryItem(entry);
             }
         });
 
-        folders.forEach((item) => {
-            this.renderItem(item, "folder");
-        });
-
-        if (keywords.length === 0 && folders.length === 0) {
+        if (entries.length === 0) {
             const emptyEl = this.listEl.createDiv({ cls: "keyword-list-empty" });
-            emptyEl.createSpan({ text: "No keyword or folder configuration" });
+            emptyEl.createSpan({ text: "No sidebar entry configuration" });
             emptyEl.createEl("br");
             emptyEl.createSpan({
-                text: "Add keywords or folders in plugin settings",
+                text: "Add entries in plugin settings",
                 cls: "keyword-list-empty-hint"
             });
         }
@@ -144,9 +150,6 @@ export class KeywordListView extends ItemView {
 
     private renderOverviewSection(): void {
         this.renderOverviewItem("today", "今天", "calendar-days", "keyword-list-overview-icon--today");
-        this.renderOverviewItem("recent-edited", "最近编辑", "history", "keyword-list-overview-icon--recent-edited");
-        this.renderOverviewItem("tasks", "待办事项", "circle-check-big", "keyword-list-overview-icon--tasks");
-        this.renderOverviewItem("read-later", "稍后读", "book-open-check", "keyword-list-overview-icon--read-later");
     }
 
     private renderOverviewItem(
@@ -165,6 +168,36 @@ export class KeywordListView extends ItemView {
         itemEl.addEventListener("click", () => {
             this.setActiveItem("overview", target);
             void this.plugin.openOverviewView(target);
+        });
+    }
+
+    /** Render a user-configured fixed doc entry */
+    private renderDocItem(entry: SidebarEntry): void {
+        const itemEl = this.listEl.createDiv({ cls: "keyword-list-item keyword-list-overview-item" });
+        this.markActive(itemEl, "overview", `doc:${entry.value}`);
+        itemEl.createSpan({ text: entry.icon, cls: "keyword-list-item-icon" });
+        const nameEl = itemEl.createSpan({ cls: "keyword-list-item-name" });
+        nameEl.setText(entry.alias || entry.value);
+        if (entry.alias && entry.alias !== entry.value) itemEl.setAttribute("title", entry.value);
+
+        itemEl.addEventListener("click", () => {
+            this.setActiveItem("overview", `doc:${entry.value}`);
+            void this.plugin.openDocEntry(entry.value);
+        });
+    }
+
+    /** Render a user-configured recent/todo sidebar entry */
+    private renderOverviewEntryItem(entry: SidebarEntry): void {
+        const target = entry.type === "todo" ? "todo" : `recent:${entry.value || "yesterday"}`;
+        const itemEl = this.listEl.createDiv({ cls: "keyword-list-item keyword-list-overview-item" });
+        this.markActive(itemEl, "overview", target);
+        itemEl.createSpan({ text: entry.icon, cls: "keyword-list-item-icon" });
+        const nameEl = itemEl.createSpan({ cls: "keyword-list-item-name" });
+        nameEl.setText(entry.alias || ENTRY_TYPE_META[entry.type].label);
+
+        itemEl.addEventListener("click", () => {
+            this.setActiveItem("overview", target);
+            void this.plugin.openOverviewView(target as OverviewTarget, entry.alias);
         });
     }
 
