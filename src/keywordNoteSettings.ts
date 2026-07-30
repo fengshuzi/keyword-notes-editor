@@ -1,5 +1,5 @@
 import KeywordNotesPlugin from "./keywordNotesPlugin";
-import { App, Platform, PluginSettingTab, Setting, setIcon } from "obsidian";
+import { App, Platform, PluginSettingTab, Setting, SettingDefinitionItem, setIcon } from "obsidian";
 
 // Keyword configuration interface (supports aggregation: p1+p2+p3+p4|Quadrant, matches any one tag)
 export interface KeywordConfig {
@@ -193,10 +193,39 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
     }
 
     display(): void {
+        // Fallback for Obsidian < 1.13; on 1.13+ the tab is rendered
+        // declaratively from getSettingDefinitions() and display() is not called.
         const { containerEl } = this;
         containerEl.empty();
+        this.buildSettings(containerEl);
+    }
+
+    getSettingDefinitions(): SettingDefinitionItem[] {
+        // The whole tab is imperative; expose it through one render item so
+        // the tab adopts the 1.13 declarative API (settings search indexing)
+        // without rewriting every control.
+        return [
+            {
+                type: "group",
+                cls: "kw-settings-root",
+                items: [
+                    {
+                        name: "Keyword Notes settings",
+                        searchable: false,
+                        render: (setting, group) => {
+                            setting.settingEl.addClass("kw-hidden");
+                            group.listEl.empty();
+                            this.buildSettings(group.listEl);
+                        },
+                    },
+                ],
+            },
+        ];
+    }
+
+    private buildSettings(rootEl: HTMLElement): void {
         // Sidebar custom entries
-        const entriesCard = containerEl.createDiv({ cls: "kw-settings-card" });
+        const entriesCard = rootEl.createDiv({ cls: "kw-settings-card" });
         new Setting(entriesCard).setName("侧边栏自定义菜单").setHeading();
         const descEl = entriesCard.createEl("p", { cls: "kw-entries-desc" });
         descEl.setText("类型说明：📄 文档 = 固定笔记路径（点击打开，首次自动创建）；🏷 关键词 = 按标签过滤，聚合用 + 连接（如 p1+p2），支持嵌套标签（p1 命中 #p1/web）；📁 文件夹 = 按路径前缀过滤（如 projects/work）；🕒 最近编辑 = 「昨天」仅含昨天 0-24 点编辑过的笔记，「最近 N 天」含今天在内向前 N 个自然日；✅ 待办事项 = 包含未完成任务（- [ ]）的笔记，无需填写值。拖动 ☰ 可调整顺序。");
@@ -217,7 +246,7 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
             this.renderEntryRows();
         });
 
-        const scanCard = containerEl.createDiv({ cls: "kw-settings-card" });
+        const scanCard = rootEl.createDiv({ cls: "kw-settings-card" });
         new Setting(scanCard).setName("扫描").setHeading();
         new Setting(scanCard)
             .setName("Excluded Folders")
@@ -236,7 +265,7 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
                     });
             });
 
-        const displayCard = containerEl.createDiv({ cls: "kw-settings-card" });
+        const displayCard = rootEl.createDiv({ cls: "kw-settings-card" });
         new Setting(displayCard).setName("Display").setHeading();
 
         new Setting(displayCard)
@@ -328,7 +357,7 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
 
 
 
-        const donateSection = containerEl.createDiv({ cls: 'plugin-donate-section' });
+        const donateSection = rootEl.createDiv({ cls: 'plugin-donate-section' });
         new Setting(donateSection).setName('☕ Buy me a coffee').setHeading();
         donateSection.createEl('p', { text: 'If this plugin helped you, consider buying me a coffee ☕', cls: 'plugin-donate-desc' });
         const imgWrap = donateSection.createDiv({ cls: 'plugin-donate-qr' });
@@ -453,14 +482,14 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
             daysInput.min = "1";
             daysInput.placeholder = "天数";
             if (!isPreset) daysInput.value = entry.value;
-            daysInput.style.display = isPreset ? "none" : "";
+            daysInput.toggleClass("kw-hidden", isPreset);
 
             presetSelect.addEventListener("change", () => {
                 if (presetSelect.value === "__custom") {
-                    daysInput.style.display = "";
+                    daysInput.removeClass("kw-hidden");
                     entry.value = daysInput.value.trim() || "1";
                 } else {
-                    daysInput.style.display = "none";
+                    daysInput.addClass("kw-hidden");
                     entry.value = presetSelect.value;
                 }
                 this.applySettingsUpdate();

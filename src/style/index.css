@@ -674,6 +674,10 @@
     flex: none;
 }
 
+.kw-hidden {
+    display: none;
+}
+
 .kw-entry-del {
     flex: none;
     width: 26px;
