@@ -192,14 +192,6 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
         this.plugin = plugin;
     }
 
-    display(): void {
-        // Fallback for Obsidian < 1.13; on 1.13+ the tab is rendered
-        // declaratively from getSettingDefinitions() and display() is not called.
-        const { containerEl } = this;
-        containerEl.empty();
-        this.buildSettings(containerEl);
-    }
-
     getSettingDefinitions(): SettingDefinitionItem[] {
         // The whole tab is imperative; expose it through one render item so
         // the tab adopts the 1.13 declarative API (settings search indexing)
