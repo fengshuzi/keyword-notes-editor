@@ -167,7 +167,11 @@ export class KeywordListView extends ItemView {
 
         itemEl.addEventListener("click", () => {
             this.setActiveItem("overview", target);
-            void this.plugin.openOverviewView(target);
+            if (target === "today") {
+                void this.plugin.openTodayJournal();
+            } else {
+                void this.plugin.openOverviewView(target);
+            }
         });
     }
 

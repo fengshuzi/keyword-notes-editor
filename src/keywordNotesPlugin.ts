@@ -8,8 +8,10 @@ import {
     WorkspaceItem,
     WorkspaceLeaf,
     getAllTags,
+    moment,
     normalizePath,
     TFolder,
+    MarkdownView,
     MarkdownFileInfo,
     requireApiVersion,
 } from "obsidian";
@@ -310,6 +312,56 @@ export default class KeywordNotesPlugin extends Plugin {
             }
         }
         if (!(file instanceof TFile)) return;
+        await this.app.workspace.getLeaf(false).openFile(file);
+    }
+
+    /** Open today's journal note directly; creates it on first click */
+    async openTodayJournal(): Promise<void> {
+        const today = moment();
+        const candidates = [
+            today.format("YYYY-MM-DD"),
+            today.format("YYYYMMDD"),
+            today.format("YYYY_MM_DD"),
+            today.format("YYYY.MM.DD"),
+        ];
+        const journalFolders = this.settings.journalFolders && this.settings.journalFolders.length > 0
+            ? this.settings.journalFolders
+            : ["journals"];
+        const isJournalPath = (filePath: string) => {
+            const parent = filePath.split("/").slice(0, -1).join("/");
+            return journalFolders.some(folder => {
+                const normalized = folder.trim().replace(/^\/+|\/+$/g, "");
+                if (!normalized) return false;
+                return parent === normalized || parent.startsWith(normalized + "/");
+            });
+        };
+        const existing = this.app.vault.getMarkdownFiles().find(f =>
+            isJournalPath(f.path) && candidates.some(token => f.basename.includes(token))
+        );
+        if (existing) {
+            await this.revealOrOpenFile(existing);
+            return;
+        }
+        const folder = journalFolders[0].trim().replace(/^\/+|\/+$/g, "") || "journals";
+        const path = normalizePath(`${folder}/${today.format("YYYY-MM-DD")}.md`);
+        try {
+            await this.ensureFolderExists(folder);
+            const created = await this.app.vault.create(path, "");
+            await this.revealOrOpenFile(created);
+        } catch (error) {
+            console.error("Keyword Notes Editor: failed to open today's journal", error);
+        }
+    }
+
+    /** Focus the leaf already showing this file when there is one */
+    private async revealOrOpenFile(file: TFile): Promise<void> {
+        const openLeaf = this.app.workspace.getLeavesOfType("markdown").find(leaf =>
+            leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path
+        );
+        if (openLeaf) {
+            void this.app.workspace.revealLeaf(openLeaf);
+            return;
+        }
         await this.app.workspace.getLeaf(false).openFile(file);
     }
 
