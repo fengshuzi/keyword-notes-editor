@@ -1,10 +1,11 @@
 {
   "name": "keyword-notes-editor",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "View and edit multiple notes grouped by keyword tags.",
   "main": "main.js",
   "scripts": {
     "lint": "eslint \"**/*.{ts,tsx}\"",
+    "test": "node --import ./test/register-obsidian.mjs --test test/*.test.mjs",
     "dev": "npm run lint && vite build --watch --mode development",
     "build": "npm run lint && npx svelte-check && vite build --mode production && cp manifest.json dist/ ",
     "build:deploy": "npm run build && npm run deploy",

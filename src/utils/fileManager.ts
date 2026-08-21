@@ -1,7 +1,7 @@
 import { TFile, moment, App, getAllTags } from "obsidian";
 import type { CachedMetadata, ListItemCache, TagCache } from "obsidian";
 import type { Moment } from "moment";
-import { OverviewTarget, TimeRange, TimeField } from "../types/time";
+import type { OverviewTarget, TimeRange, TimeField } from "../types/time";
 
 function toMoment(input?: number | Date | string | Moment): Moment {
     return (moment as unknown as (inp?: number | Date | string | Moment) => Moment)(input);
@@ -426,6 +426,7 @@ export class FileManager {
         // Handle file creation for folder and tag modes
         if (this.options.mode === "folder" || this.options.mode === "xiaohongshu") {
             if (!this.options.target || !this.options.app) return;
+            if (file.extension !== "md") return;
             const folderPath = file.parent?.path || "";
             if (
                 folderPath === this.options.target ||

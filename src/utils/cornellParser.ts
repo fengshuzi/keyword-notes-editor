@@ -1,4 +1,4 @@
-import { App, TFile } from "obsidian";
+import type { App, TFile } from "obsidian";
 
 /**
  * 康奈尔结构解析（只服务于排版，不涉及编辑）
