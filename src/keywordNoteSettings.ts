@@ -1,5 +1,6 @@
 import KeywordNotesPlugin from "./keywordNotesPlugin";
-import { App, Platform, PluginSettingTab, Setting, SettingDefinitionItem, setIcon } from "obsidian";
+import { App, Platform, PluginSettingTab, Setting, setIcon } from "obsidian";
+import type { XiaohongshuThemeId } from "./utils/xiaohongshuThemes";
 
 // Keyword configuration interface (supports aggregation: p1+p2+p3+p4|Quadrant, matches any one tag)
 export interface KeywordConfig {
@@ -17,7 +18,7 @@ export interface FolderConfig {
 }
 
 // Sidebar entry types shown in the keyword list
-export type SidebarEntryType = "doc" | "keyword" | "folder" | "recent" | "todo";
+export type SidebarEntryType = "doc" | "keyword" | "folder" | "recent" | "todo" | "cornell" | "xiaohongshu";
 
 // Unified sidebar entry. For "recent", value is "yesterday" or a day count N
 // (including today, counting back N calendar days). "todo" needs no value.
@@ -71,6 +72,21 @@ export interface KeywordNotesSettings {
 
     /** Use a stable random common color when a note does not have a per-note override */
     useRandomNoteColors: boolean;
+
+    /** Cornell view: width of the cue column, in px */
+    cornellCueWidth: number;
+
+    /** Cornell view: remembered zone visibility */
+    cornellShowCue: boolean;
+    cornellShowBody: boolean;
+    cornellShowSummary: boolean;
+
+    /** Xiaohongshu card theme used by the folder preview. */
+    xiaohongshuTheme: XiaohongshuThemeId;
+
+    /** Optional custom labels for the Xiaohongshu card corners. */
+    xiaohongshuTopRightText: string;
+    xiaohongshuBottomLeftText: string;
 }
 
 // Fruit icon list (shared by keywords and folders)
@@ -90,6 +106,8 @@ export const ENTRY_TYPE_META: Record<SidebarEntryType, { label: string }> = {
     folder: { label: "📁 文件夹" },
     recent: { label: "🕒 最近编辑" },
     todo: { label: "✅ 待办事项" },
+    cornell: { label: "🌽 康奈尔" },
+    xiaohongshu: { label: "🌸 小红书" },
 };
 
 // Preset choices for the "recent" entry type
@@ -118,6 +136,13 @@ export const DEFAULT_SETTINGS: KeywordNotesSettings = {
     noteColors: {},
     defaultNoteColor: DEFAULT_NOTE_COLOR,
     useRandomNoteColors: false,
+    cornellCueWidth: 176,
+    cornellShowCue: true,
+    cornellShowBody: true,
+    cornellShowSummary: true,
+    xiaohongshuTheme: "light",
+    xiaohongshuTopRightText: "",
+    xiaohongshuBottomLeftText: "",
 };
 
 export const NOTE_COLORS: Array<{ label: string; value: string | null }> = [
@@ -192,27 +217,18 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
         this.plugin = plugin;
     }
 
-    getSettingDefinitions(): SettingDefinitionItem[] {
-        // The whole tab is imperative; expose it through one render item so
-        // the tab adopts the 1.13 declarative API (settings search indexing)
-        // without rewriting every control.
-        return [
-            {
-                type: "group",
-                cls: "kw-settings-root",
-                items: [
-                    {
-                        name: "Keyword Notes settings",
-                        searchable: false,
-                        render: (setting, group) => {
-                            setting.settingEl.addClass("kw-hidden");
-                            group.listEl.empty();
-                            this.buildSettings(group.listEl);
-                        },
-                    },
-                ],
-            },
-        ];
+    // 经典命令式渲染：覆盖 display()，绕开 1.13 声明式 getSettingDefinitions 容器的布局问题。
+    display(): void {
+        const { containerEl } = this;
+        containerEl.empty();
+        try {
+            this.buildSettings(containerEl);
+        } catch (e) {
+            console.error("Keyword Notes settings render failed", e);
+            const errEl = containerEl.createDiv({ cls: "kw-settings-error" });
+            errEl.createEl("p", { text: "设置渲染失败：" });
+            errEl.createEl("pre", { text: e instanceof Error ? (e.stack || e.message) : String(e) });
+        }
     }
 
     private buildSettings(rootEl: HTMLElement): void {
@@ -220,7 +236,7 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
         const entriesCard = rootEl.createDiv({ cls: "kw-settings-card" });
         new Setting(entriesCard).setName("侧边栏自定义菜单").setHeading();
         const descEl = entriesCard.createEl("p", { cls: "kw-entries-desc" });
-        descEl.setText("类型说明：📄 文档 = 固定笔记路径（点击打开，首次自动创建）；🏷 关键词 = 按标签过滤，聚合用 + 连接（如 p1+p2），支持嵌套标签（p1 命中 #p1/web）；📁 文件夹 = 按路径前缀过滤（如 projects/work）；🕒 最近编辑 = 「昨天」仅含昨天 0-24 点编辑过的笔记，「最近 N 天」含今天在内向前 N 个自然日；✅ 待办事项 = 包含未完成任务（- [ ]）的笔记，无需填写值。拖动 ☰ 可调整顺序。");
+        descEl.setText("类型说明：📄 文档 = 固定笔记路径（点击打开，首次自动创建）；🏷 关键词 = 按标签过滤，聚合用 + 连接（如 p1+p2），支持嵌套标签（p1 命中 #p1/web）；📁 文件夹 = 按路径前缀过滤（如 projects/work）；🌸 小红书 = 按目录查看，一篇笔记一个展示卡片，卡片内按标题和 --- 生成 3:4 图文页；🕒 最近编辑 = 「昨天」仅含昨天 0-24 点编辑过的笔记，「最近 N 天」含今天在内向前 N 个自然日；✅ 待办事项 = 包含未完成任务（- [ ]）的笔记，无需填写值。拖动 ☰ 可调整顺序。");
         this.entriesEl = entriesCard.createDiv({ cls: "kw-entries-list" });
         this.renderEntryRows();
 
@@ -253,6 +269,63 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
                             .split("\n")
                             .map(s => s.trim())
                             .filter(s => s.length > 0);
+                        this.applySettingsUpdate();
+                    });
+            });
+
+        const cornellCard = rootEl.createDiv({ cls: "kw-settings-card" });
+        new Setting(cornellCard).setName("康奈尔笔记").setHeading();
+        cornellCard.createEl("p", { cls: "kw-entries-desc" }).setText(
+            "结构约定：每个二级标题（##）是一条线索，标题下面的内容是正文；所有线索聚合成左侧线索卡，所有正文聚合成右侧正文卡，最后一个二级标题整段作为底部横贯的总结卡（不看标题文字叫什么）。第一个二级标题之前的内容归入正文卡开头。这只是排版，双击任意位置即切换回原有的整篇编辑卡片。"
+        );
+
+        new Setting(cornellCard)
+            .setName("线索列宽度")
+            .setDesc("康奈尔视图左侧线索列的宽度（像素）。窄窗口会自动切换为上下堆叠。")
+            .addSlider((slider) =>
+                slider
+                    .setLimits(100, 320, 4)
+                    .setValue(this.plugin.settings.cornellCueWidth || 176)
+                    .setDynamicTooltip()
+                    .onChange((value) => {
+                        this.plugin.settings.cornellCueWidth = value;
+                        this.plugin.refreshKeywordNoteViews();
+                        this.applySettingsUpdate();
+                    })
+            );
+
+        const xiaohongshuCard = rootEl.createDiv({ cls: "kw-settings-card" });
+        new Setting(xiaohongshuCard).setName("小红书图文卡片").setHeading();
+        xiaohongshuCard.createEl("p", { cls: "kw-entries-desc" }).setText(
+            "自定义图文页右上角和左下角的文字。留空时保持默认内容。"
+        );
+
+        new Setting(xiaohongshuCard)
+            .setName("右上角文字")
+            .setDesc("例如栏目名或账号名。留空时使用当前主题的默认内容。")
+            .addText((text) => {
+                text.inputEl.maxLength = 40;
+                text
+                    .setValue(this.plugin.settings.xiaohongshuTopRightText || "")
+                    .setPlaceholder("留空使用默认内容")
+                    .onChange((value) => {
+                        this.plugin.settings.xiaohongshuTopRightText = value.trim();
+                        this.plugin.refreshKeywordNoteViews();
+                        this.applySettingsUpdate();
+                    });
+            });
+
+        new Setting(xiaohongshuCard)
+            .setName("左下角文字")
+            .setDesc("例如作者网名。留空时显示笔记修改日期。")
+            .addText((text) => {
+                text.inputEl.maxLength = 40;
+                text
+                    .setValue(this.plugin.settings.xiaohongshuBottomLeftText || "")
+                    .setPlaceholder("作者网名")
+                    .onChange((value) => {
+                        this.plugin.settings.xiaohongshuBottomLeftText = value.trim();
+                        this.plugin.refreshKeywordNoteViews();
                         this.applySettingsUpdate();
                     });
             });
@@ -500,9 +573,13 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
         const valueInput = wrap.createEl("input", { cls: "kw-entry-value", type: "text" });
         valueInput.placeholder = entry.type === "keyword"
             ? "标签，如 p1 或 p1+p2"
-            : entry.type === "doc"
-                ? "笔记路径，如 pages/inbox.md"
-                : "路径，如 projects/work";
+            : entry.type === "cornell"
+                ? "康奈尔标签，如 康奈尔笔记"
+                : entry.type === "xiaohongshu"
+                    ? "目录路径，如 projects/work"
+                    : entry.type === "doc"
+                        ? "笔记路径，如 pages/inbox.md"
+                        : "路径，如 projects/work";
         valueInput.value = entry.value;
         valueInput.addEventListener("change", () => {
             entry.value = valueInput.value.trim().replace(/^#/, "");

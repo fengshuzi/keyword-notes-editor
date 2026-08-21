@@ -10,7 +10,7 @@ function toMoment(input?: number | Date | string | Moment): Moment {
 type BaseTimeField = "ctime" | "mtime" | "name";
 
 export interface FileManagerOptions {
-    mode: "folder" | "tag" | "overview";
+    mode: "folder" | "tag" | "overview" | "cornell" | "xiaohongshu";
     target?: string;
     timeRange?: TimeRange;
     customRange?: { start: Date; end: Date } | null;
@@ -110,9 +110,11 @@ export class FileManager {
 
         switch (this.options.mode) {
             case "folder":
+            case "xiaohongshu":
                 this.fetchFolderFiles();
                 break;
             case "tag":
+            case "cornell":
                 this.fetchTaggedFiles();
                 break;
             case "overview":
@@ -422,7 +424,7 @@ export class FileManager {
 
     public fileCreate(file: TFile): void {
         // Handle file creation for folder and tag modes
-        if (this.options.mode === "folder") {
+        if (this.options.mode === "folder" || this.options.mode === "xiaohongshu") {
             if (!this.options.target || !this.options.app) return;
             const folderPath = file.parent?.path || "";
             if (

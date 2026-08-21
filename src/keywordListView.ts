@@ -132,6 +132,10 @@ export class KeywordListView extends ItemView {
                 this.renderItem(entryToFolderConfig(entry), "folder");
             } else if (entry.type === "doc" && entry.value) {
                 this.renderDocItem(entry);
+            } else if (entry.type === "cornell" && entry.value) {
+                this.renderCornellItem(entry);
+            } else if (entry.type === "xiaohongshu" && entry.value) {
+                this.renderXiaohongshuItem(entry);
             } else if (entry.type === "recent" || entry.type === "todo") {
                 this.renderOverviewEntryItem(entry);
             }
@@ -187,6 +191,36 @@ export class KeywordListView extends ItemView {
         itemEl.addEventListener("click", () => {
             this.setActiveItem("overview", `doc:${entry.value}`);
             void this.plugin.openDocEntry(entry.value);
+        });
+    }
+
+    /** Render a user-configured Cornell sidebar entry */
+    private renderCornellItem(entry: SidebarEntry): void {
+        const itemEl = this.listEl.createDiv({ cls: "keyword-list-item" });
+        itemEl.createSpan({ text: entry.icon, cls: "keyword-list-item-icon" });
+        const nameEl = itemEl.createSpan({ cls: "keyword-list-item-name" });
+        nameEl.setText(entry.alias || `#${entry.value}`);
+        if (entry.alias && entry.alias !== entry.value) itemEl.setAttribute("title", `#${entry.value}`);
+        this.markActive(itemEl, "cornell", entry.value);
+
+        itemEl.addEventListener("click", () => {
+            this.setActiveItem("cornell", entry.value);
+            void this.plugin.openCornellView(entryToKeywordConfig(entry));
+        });
+    }
+
+    /** Render a user-configured Xiaohongshu sidebar entry (folder path → card wall) */
+    private renderXiaohongshuItem(entry: SidebarEntry): void {
+        const itemEl = this.listEl.createDiv({ cls: "keyword-list-item" });
+        itemEl.createSpan({ text: entry.icon, cls: "keyword-list-item-icon" });
+        const nameEl = itemEl.createSpan({ cls: "keyword-list-item-name" });
+        nameEl.setText(entry.alias || entry.value);
+        if (entry.alias && entry.alias !== entry.value) itemEl.setAttribute("title", entry.value);
+        this.markActive(itemEl, "xiaohongshu", entry.value);
+
+        itemEl.addEventListener("click", () => {
+            this.setActiveItem("xiaohongshu", entry.value);
+            void this.plugin.openXiaohongshuView(entryToFolderConfig(entry));
         });
     }
 

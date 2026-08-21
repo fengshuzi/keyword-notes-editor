@@ -37,6 +37,7 @@ import { OverviewTarget, TimeField } from "./types/time";
 import { createUpDownNavigationExtension } from "./component/UpAndDownNavigate";
 import { KEYWORD_NOTE_VIEW_TYPE, KeywordNoteView } from "./keywordNoteView";
 import { KEYWORD_LIST_VIEW_TYPE, KeywordListView } from "./keywordListView";
+import { isXiaohongshuThemeId } from "./utils/xiaohongshuThemes";
 
 type ViewConstructor = { VIEW_TYPE?: string };
 type MarkdownViewLike = { editMode?: unknown };
@@ -245,6 +246,27 @@ export default class KeywordNotesPlugin extends Plugin {
             view.setTimeField("mtime");
             view.setIncludeSubTags(true);
             view.setKeywordDisplay(keyword);
+        });
+    }
+
+    // Open Cornell note view (tag-driven, Cornell layout rendering)
+    async openCornellView(keyword: KeywordConfig) {
+        const target = this.getKeywordTarget(keyword);
+
+        await this.openKeywordNoteView((view) => {
+            view.setSelectionMode("cornell", target);
+            view.setTimeField("mtime");
+            view.setIncludeSubTags(true);
+            view.setCornellDisplay(keyword);
+        });
+    }
+
+    // Open Xiaohongshu card-wall view for a folder path
+    async openXiaohongshuView(folder: FolderConfig) {
+        await this.openKeywordNoteView((view) => {
+            view.setSelectionMode("xiaohongshu", folder.path);
+            view.setTimeField("mtime");
+            view.setFolderDisplay(folder);
         });
     }
 
@@ -603,6 +625,9 @@ export default class KeywordNotesPlugin extends Plugin {
             DEFAULT_SETTINGS,
             storedSettings
         );
+        if (!isXiaohongshuThemeId(this.settings.xiaohongshuTheme)) {
+            this.settings.xiaohongshuTheme = DEFAULT_SETTINGS.xiaohongshuTheme;
+        }
         this.migrateSidebarEntries();
         
         // Reassign icons to ensure keywords and folders do not have duplicate icons
@@ -664,7 +689,7 @@ export default class KeywordNotesPlugin extends Plugin {
         await this.saveData(this.settings);
     }
 
-    getPinnedScopeKey(mode: "folder" | "tag" | "overview", target: string, includeSubTags = false): string {
+    getPinnedScopeKey(mode: "folder" | "tag" | "overview" | "cornell" | "xiaohongshu", target: string, includeSubTags = false): string {
         if (mode === "overview") {
             return `overview:${target}`;
         }
@@ -672,6 +697,11 @@ export default class KeywordNotesPlugin extends Plugin {
         if (mode === "folder") {
             const folder = normalizePath(target || "").replace(/^\/+|\/+$/g, "");
             return `folder:${folder}`;
+        }
+
+        if (mode === "xiaohongshu") {
+            const folder = normalizePath(target || "").replace(/^\/+|\/+$/g, "");
+            return `xiaohongshu:${folder}`;
         }
 
         const tagTarget = (target || "")

@@ -25,6 +25,12 @@ interface KeywordNoteEditorViewInstance {
         target: string;
         timeField: TimeField;
         includeSubTags: boolean;
+        showCue: boolean;
+        showBody: boolean;
+        showSummary: boolean;
+        cornellCueWidth: number;
+        xiaohongshuTopRightText: string;
+        xiaohongshuBottomLeftText: string;
     }>): void;
     refresh(): void;
     fileCreate(file: TFile): void;
@@ -43,6 +49,12 @@ const KeywordNoteEditorViewCtor = KeywordNoteEditorViewComponent as unknown as n
         target: string;
         timeField: TimeField;
         includeSubTags: boolean;
+        showCue: boolean;
+        showBody: boolean;
+        showSummary: boolean;
+        cornellCueWidth: number;
+        xiaohongshuTopRightText: string;
+        xiaohongshuBottomLeftText: string;
     };
 }) => KeywordNoteEditorViewInstance;
 
@@ -56,12 +68,23 @@ export class KeywordNoteView extends ItemView {
     target: string = "";
     timeField: TimeField = "mtime";
     includeSubTags: boolean = false;
-    
+
     // 关键词显示配置
     keywordDisplay: KeywordConfig | null = null;
-    
+
     // 文件夹显示配置
     folderDisplay: FolderConfig | null = null;
+
+    // 小红书显示配置（沿用 FolderConfig 表达「指定目录」）
+    xiaohongshuDisplay: FolderConfig | null = null;
+
+    // 康奈尔显示配置
+    cornellDisplay: KeywordConfig | null = null;
+
+    // 康奈尔三列显隐（线索 / 正文 / 总结）
+    showCue: boolean = true;
+    showBody: boolean = true;
+    showSummary: boolean = true;
 
     overviewDisplay: { target: OverviewTarget; alias: string; icon: string } | null = null;
 
@@ -69,7 +92,32 @@ export class KeywordNoteView extends ItemView {
         super(leaf);
         this.plugin = plugin;
 
+        this.showCue = plugin.settings.cornellShowCue !== false;
+        this.showBody = plugin.settings.cornellShowBody !== false;
+        this.showSummary = plugin.settings.cornellShowSummary !== false;
+
         this.scope = new Scope(plugin.app.scope);
+    }
+
+    /** Cornell zone visibility and cue width live in settings; push them into the view. */
+    private syncCornellProps(): void {
+        this.showCue = this.plugin.settings.cornellShowCue !== false;
+        this.showBody = this.plugin.settings.cornellShowBody !== false;
+        this.showSummary = this.plugin.settings.cornellShowSummary !== false;
+
+        this.view?.$set({
+            showCue: this.showCue,
+            showBody: this.showBody,
+            showSummary: this.showSummary,
+            cornellCueWidth: this.plugin.settings.cornellCueWidth || 176,
+        });
+    }
+
+    private syncXiaohongshuProps(): void {
+        this.view?.$set({
+            xiaohongshuTopRightText: this.plugin.settings.xiaohongshuTopRightText || "",
+            xiaohongshuBottomLeftText: this.plugin.settings.xiaohongshuBottomLeftText || "",
+        });
     }
 
     getMode = () => {
@@ -87,11 +135,23 @@ export class KeywordNoteView extends ItemView {
         if (this.folderDisplay) {
             return `${this.folderDisplay.icon} ${this.folderDisplay.alias}`;
         }
+        if (this.cornellDisplay) {
+            return `${this.cornellDisplay.icon} ${this.cornellDisplay.alias}`;
+        }
+        if (this.xiaohongshuDisplay) {
+            return `🌸 ${this.xiaohongshuDisplay.alias}`;
+        }
         if (this.overviewDisplay) {
             return `${this.overviewDisplay.icon} ${this.overviewDisplay.alias}`;
         }
         if (this.selectionMode === "tag" && this.target) {
             return `#${this.target}`;
+        }
+        if (this.selectionMode === "cornell" && this.target) {
+            return `🌽 #${this.target}`;
+        }
+        if (this.selectionMode === "xiaohongshu" && this.target) {
+            return `🌸 ${this.target}`;
         }
         if (this.selectionMode === "folder") {
             return `文件夹: ${this.target}`;
@@ -115,6 +175,7 @@ export class KeywordNoteView extends ItemView {
     setKeywordDisplay(keyword: KeywordConfig) {
         this.keywordDisplay = keyword;
         this.folderDisplay = null;
+        this.cornellDisplay = null;
         this.overviewDisplay = null;
         this.leaf.updateHeader();
     }
@@ -123,6 +184,27 @@ export class KeywordNoteView extends ItemView {
     setFolderDisplay(folder: FolderConfig) {
         this.folderDisplay = folder;
         this.keywordDisplay = null;
+        this.cornellDisplay = null;
+        this.xiaohongshuDisplay = null;
+        this.overviewDisplay = null;
+        this.leaf.updateHeader();
+    }
+
+    // 设置小红书显示（沿用 FolderConfig 描述指定目录）
+    setXiaohongshuDisplay(folder: FolderConfig) {
+        this.xiaohongshuDisplay = folder;
+        this.keywordDisplay = null;
+        this.folderDisplay = null;
+        this.cornellDisplay = null;
+        this.overviewDisplay = null;
+        this.leaf.updateHeader();
+    }
+
+    // 设置康奈尔显示
+    setCornellDisplay(keyword: KeywordConfig) {
+        this.cornellDisplay = keyword;
+        this.keywordDisplay = null;
+        this.folderDisplay = null;
         this.overviewDisplay = null;
         this.leaf.updateHeader();
     }
@@ -141,6 +223,7 @@ export class KeywordNoteView extends ItemView {
         }
         this.keywordDisplay = null;
         this.folderDisplay = null;
+        this.cornellDisplay = null;
         this.leaf.updateHeader();
     }
 
@@ -162,6 +245,8 @@ export class KeywordNoteView extends ItemView {
         this.target = target;
         this.keywordDisplay = null;
         this.folderDisplay = null;
+        this.cornellDisplay = null;
+        this.xiaohongshuDisplay = null;
         this.overviewDisplay = null;
 
         if (this.view) {
@@ -183,6 +268,8 @@ export class KeywordNoteView extends ItemView {
 
     refresh() {
         if (this.view) {
+            this.syncCornellProps();
+            this.syncXiaohongshuProps();
             this.view.refresh();
         }
     }
@@ -199,6 +286,25 @@ export class KeywordNoteView extends ItemView {
             timeField: this.timeField,
             includeSubTags: this.includeSubTags,
         };
+    }
+
+    /** Clean the xiaohongshu-related state when restoring into a non-xiaohongshu mode. */
+    private syncDisplayFromMode(): void {
+        if (this.selectionMode !== "xiaohongshu" && this.xiaohongshuDisplay) {
+            this.xiaohongshuDisplay = null;
+        }
+        if (this.selectionMode !== "folder" && this.folderDisplay && this.selectionMode !== "xiaohongshu") {
+            this.folderDisplay = null;
+        }
+        if (this.selectionMode !== "cornell" && this.cornellDisplay) {
+            this.cornellDisplay = null;
+        }
+        if (this.selectionMode !== "tag" && this.keywordDisplay) {
+            this.keywordDisplay = null;
+        }
+        if (this.selectionMode !== "overview" && this.overviewDisplay) {
+            this.overviewDisplay = null;
+        }
     }
 
     async setState(state: unknown, result?: unknown): Promise<void> {
@@ -231,6 +337,9 @@ export class KeywordNoteView extends ItemView {
                 this.setOverviewDisplay(this.target as OverviewTarget);
             }
 
+            // 切换 selectionMode 后清理掉不匹配的显示状态
+            this.syncDisplayFromMode();
+
             // View is created in onOpen(); update its props if already mounted
             if (this.view) {
                 this.view.$set({
@@ -238,6 +347,10 @@ export class KeywordNoteView extends ItemView {
                     target: this.target,
                     timeField: this.timeField,
                     includeSubTags: this.includeSubTags,
+                    showCue: this.showCue,
+                    showBody: this.showBody,
+                    showSummary: this.showSummary,
+                    cornellCueWidth: this.plugin.settings.cornellCueWidth || 176,
                 });
             }
         }
@@ -285,6 +398,10 @@ export class KeywordNoteView extends ItemView {
 
         // Create Svelte view here so it exists regardless of how the view is opened
         if (!this.view) {
+            // Drop any DOM left behind by a previous plugin instance (dev reload with
+            // the tab still open), otherwise the old and new UI stack up together.
+            this.contentEl.empty();
+
             this.view = new KeywordNoteEditorViewCtor({
                 target: this.contentEl,
                 props: {
@@ -294,6 +411,12 @@ export class KeywordNoteView extends ItemView {
                     target: this.target,
                     timeField: this.timeField,
                     includeSubTags: this.includeSubTags,
+                    showCue: this.showCue,
+                    showBody: this.showBody,
+                    showSummary: this.showSummary,
+                    cornellCueWidth: this.plugin.settings.cornellCueWidth || 176,
+                    xiaohongshuTopRightText: this.plugin.settings.xiaohongshuTopRightText || "",
+                    xiaohongshuBottomLeftText: this.plugin.settings.xiaohongshuBottomLeftText || "",
                 },
             });
             this.app.workspace.onLayoutReady(() => {
