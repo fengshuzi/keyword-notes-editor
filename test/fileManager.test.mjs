@@ -168,3 +168,35 @@ describe("timeRange 过滤", () => {
         assert.equal(manager.getFilteredFiles().length, 1);
     });
 });
+
+describe("linekeyword 模式日记扫描", () => {
+    it("只收集 journalFolders 内的 md，按 basename 日期倒序", () => {
+        const d26 = makeFile("journals/2026-08-26.md");
+        const d27 = makeFile("journals/2026-08-27.md");
+        const other = makeFile("pages/2026-08-28.md");
+        const nested = makeFile("journals/sub/2026-08-25.md");
+        const app = makeApp([d26, d27, other, nested]);
+
+        const manager = new FileManager({
+            mode: "linekeyword",
+            target: "cy",
+            app,
+            journalFolders: ["journals"],
+        });
+
+        assert.deepEqual(manager.getFilteredFiles().map((file) => file.path), [
+            "journals/2026-08-27.md",
+            "journals/2026-08-26.md",
+            "journals/sub/2026-08-25.md",
+        ]);
+    });
+
+    it("fileCreate 只加入 journal 内 md", () => {
+        const app = makeApp([]);
+        const manager = new FileManager({ mode: "linekeyword", target: "cy", app, journalFolders: ["journals"] });
+        manager.fileCreate(makeFile("pages/x.md"));
+        manager.fileCreate(makeFile("journals/x.png"));
+        manager.fileCreate(makeFile("journals/2026-08-27.md"));
+        assert.deepEqual(manager.getFilteredFiles().map((file) => file.path), ["journals/2026-08-27.md"]);
+    });
+});

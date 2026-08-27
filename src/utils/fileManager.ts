@@ -10,7 +10,7 @@ function toMoment(input?: number | Date | string | Moment): Moment {
 type BaseTimeField = "ctime" | "mtime" | "name";
 
 export interface FileManagerOptions {
-    mode: "folder" | "tag" | "overview" | "cornell" | "xiaohongshu";
+    mode: "folder" | "tag" | "overview" | "cornell" | "xiaohongshu" | "linekeyword";
     target?: string;
     timeRange?: TimeRange;
     customRange?: { start: Date; end: Date } | null;
@@ -117,6 +117,9 @@ export class FileManager {
             case "cornell":
                 this.fetchTaggedFiles();
                 break;
+            case "linekeyword":
+                this.fetchJournalFiles();
+                break;
             case "overview":
                 this.fetchOverviewFiles();
                 break;
@@ -147,6 +150,13 @@ export class FileManager {
             this.allFiles,
             this.options.timeField
         );
+    }
+
+    private fetchJournalFiles(): void {
+        if (!this.options.app) return;
+        this.allFiles = this.options.app.vault.getMarkdownFiles()
+            .filter((file) => this.isJournalFile(file))
+            .sort((a, b) => b.basename.localeCompare(a.basename));
     }
 
     private fetchTaggedFiles(): void {
@@ -442,6 +452,11 @@ export class FileManager {
             }
         } else if (this.options.mode === "tag") {
             this.handleTaggedFileCreate(file);
+        } else if (this.options.mode === "linekeyword") {
+            if (file.extension !== "md" || !this.isJournalFile(file)) return;
+            this.allFiles.push(file);
+            this.allFiles.sort((a, b) => b.basename.localeCompare(a.basename));
+            this.filterFilesByRange();
         } else if (this.options.mode === "overview") {
             this.forceRefresh();
         }

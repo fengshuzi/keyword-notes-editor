@@ -6,11 +6,13 @@
     import KeywordNote from "./KeywordNote.svelte";
     import CornellNote from "./CornellNote.svelte";
     import XiaohongshuCard from "./XiaohongshuCard.svelte";
+    import LineKeywordCard from "./LineKeywordCard.svelte";
     import { inview } from "svelte-inview";
     import { SelectionMode, TimeField } from "../types/time";
     import { onDestroy, onMount, tick } from "svelte";
     import { FileManager, FileManagerOptions } from "../utils/fileManager";
     import { XiaohongshuCard as XiaohongshuCardData, parseXiaohongshuCards } from "../utils/xiaohongshuParser";
+    import { extractLineKeywordLines, type LineKeywordEntry } from "../utils/lineKeyword";
     import {
         XIAOHONGSHU_THEMES,
         isXiaohongshuThemeId,
@@ -45,6 +47,8 @@
     let pinnedPaths: Set<string> = new Set();
     let noteColors: Map<string, string> = new Map();
     let selectedNotePath: string | null = null;
+    let lineEntries: LineKeywordEntry<TFile>[] = [];
+    let lineLoading = false;
 
     let hasMore = true;
     let firstLoaded = true;
@@ -112,6 +116,8 @@
         }
         renderedFiles = [];
         filteredFiles = [];
+        lineEntries = [];
+        lineLoading = false;
         visibleNotes = new Set();
         selectedNotePath = null;
         hasMore = false;
@@ -134,10 +140,34 @@
 
         syncPinnedPaths();
         filteredFiles = getScopedFilteredFiles();
+        if (selectionMode === "linekeyword") {
+            await loadLineEntries(version);
+            return;
+        }
         syncNoteColors();
         hasMore = filteredFiles.length > 0;
         firstLoaded = true;
         startFillViewport();
+    }
+
+    async function loadLineEntries(version: number) {
+        lineLoading = true;
+        lineEntries = [];
+        const entries: LineKeywordEntry<TFile>[] = [];
+        for (const file of filteredFiles) {
+            try {
+                const content = await plugin.app.vault.cachedRead(file);
+                if (version !== resetVersion) return;
+                const lines = extractLineKeywordLines(content, target);
+                if (lines.length > 0) entries.push({ file, lines });
+            } catch (error) {
+                console.error("Keyword Notes Editor: failed to scan journal lines", file.path, error);
+            }
+        }
+        if (version !== resetVersion) return;
+        lineEntries = entries;
+        lineLoading = false;
+        hasMore = false;
     }
 
     export function foldAll() {
@@ -287,6 +317,10 @@
     }
 
     export function fileCreate(file: TFile) {
+        if (selectionMode === "linekeyword") {
+            refresh();
+            return;
+        }
         const loadedCount = renderedFiles.length;
         fileManager.fileCreate(file);
         syncPinnedPaths();
@@ -303,6 +337,10 @@
     }
 
     export function fileDelete(file: TFile) {
+        if (selectionMode === "linekeyword") {
+            refresh();
+            return;
+        }
         fileManager.fileDelete(file);
         deletingPaths.delete(file.path);
         if (selectedNotePath === file.path) {
@@ -365,6 +403,7 @@
 
     $: isCornell = selectionMode === "cornell";
     $: isXiaohongshu = selectionMode === "xiaohongshu";
+    $: isLineKeyword = selectionMode === "linekeyword";
     $: zoneVisibility = { cue: showCue, body: showBody, summary: showSummary } as Record<CornellZone, boolean>;
     $: effectiveCueWidth = cornellCueWidth || plugin.settings.cornellCueWidth || 176;
     $: cornellPreset = !showBody ? "自测模式：只看线索" : !showCue ? "纯阅读：只看正文" : "";
@@ -538,7 +577,7 @@
 
 </script>
 
-<div class="keyword-note-view" class:is-cornell={isCornell} class:is-xiaohongshu={isXiaohongshu}>
+<div class="keyword-note-view" class:is-cornell={isCornell} class:is-xiaohongshu={isXiaohongshu} class:is-line-keyword={isLineKeyword}>
     {#if isCornell}
         <div class="kw-cornell-toolbar">
             <div class="kw-cornell-segment" role="group" aria-label="康奈尔分区显示">
@@ -675,6 +714,18 @@
                 </div>
             {/if}
         {/if}
+    {:else if isLineKeyword}
+        {#if lineLoading}
+            <div class="kw-stock"><div class="kw-stock-text">正在扫描日记行…</div></div>
+        {:else if lineEntries.length === 0}
+            <div class="kw-stock"><div class="kw-stock-text">没有匹配的日记行</div></div>
+        {:else}
+            <div class="kw-line-keyword-list">
+                {#each lineEntries as entry (entry.file.path)}
+                    <LineKeywordCard file={entry.file} lines={entry.lines} {plugin} />
+                {/each}
+            </div>
+        {/if}
     {:else}
         <!-- 其它模式：列表 + 无限滚动 -->
         {#if renderedFiles.length === 0}
@@ -753,6 +804,16 @@
     /* ── 小红书：笔记与图文页两级导航 ── */
     .keyword-note-view.is-xiaohongshu {
         gap: var(--size-4-3);
+    }
+
+    .keyword-note-view.is-line-keyword {
+        display: block;
+        padding: var(--size-4-3);
+    }
+
+    .kw-line-keyword-list {
+        max-width: 860px;
+        margin: 0 auto;
     }
 
     .kw-xhs-toolbar {

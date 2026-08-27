@@ -18,7 +18,7 @@ export interface FolderConfig {
 }
 
 // Sidebar entry types shown in the keyword list
-export type SidebarEntryType = "doc" | "keyword" | "folder" | "recent" | "todo" | "cornell" | "xiaohongshu";
+export type SidebarEntryType = "doc" | "keyword" | "folder" | "recent" | "todo" | "cornell" | "xiaohongshu" | "linekeyword";
 
 // Unified sidebar entry. For "recent", value is "yesterday" or a day count N
 // (including today, counting back N calendar days). "todo" needs no value.
@@ -108,6 +108,7 @@ export const ENTRY_TYPE_META: Record<SidebarEntryType, { label: string }> = {
     todo: { label: "✅ 待办事项" },
     cornell: { label: "🌽 康奈尔" },
     xiaohongshu: { label: "🌸 小红书" },
+    linekeyword: { label: "🔖 行关键词" },
 };
 
 // Preset choices for the "recent" entry type
@@ -236,7 +237,7 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
         const entriesCard = rootEl.createDiv({ cls: "kw-settings-card" });
         new Setting(entriesCard).setName("侧边栏自定义菜单").setHeading();
         const descEl = entriesCard.createEl("p", { cls: "kw-entries-desc" });
-        descEl.setText("类型说明：📄 文档 = 固定笔记路径（点击打开，首次自动创建）；🏷 关键词 = 按标签过滤，聚合用 + 连接（如 p1+p2），支持嵌套标签（p1 命中 #p1/web）；📁 文件夹 = 按路径前缀过滤（如 projects/work）；🌸 小红书 = 按目录查看，一篇笔记一个展示卡片，卡片内按标题和 --- 生成 3:4 图文页；🕒 最近编辑 = 「昨天」仅含昨天 0-24 点编辑过的笔记，「最近 N 天」含今天在内向前 N 个自然日；✅ 待办事项 = 包含未完成任务（- [ ]）的笔记，无需填写值。拖动 ☰ 可调整顺序。");
+        descEl.setText("类型说明：📄 文档 = 固定笔记路径（点击打开，首次自动创建）；🏷 关键词 = 按标签过滤，聚合用 + 连接（如 p1+p2），支持嵌套标签（p1 命中 #p1/web）；🔖 行关键词 = 扫描日记目录中的 - #标签 行，聚合支持 + 或逗号（如 cy+gw），按日期显示，点击日期打开完整日记；📁 文件夹 = 按路径前缀过滤（如 projects/work）；🌸 小红书 = 按目录查看，一篇笔记一个展示卡片，卡片内按标题和 --- 生成 3:4 图文页；🕒 最近编辑 = 「昨天」仅含昨天 0-24 点编辑过的笔记，「最近 N 天」含今天在内向前 N 个自然日；✅ 待办事项 = 包含未完成任务（- [ ]）的笔记，无需填写值。拖动 ☰ 可调整顺序。");
         this.entriesEl = entriesCard.createDiv({ cls: "kw-entries-list" });
         this.renderEntryRows();
 
@@ -571,7 +572,9 @@ export class KeywordNotesSettingTab extends PluginSettingTab {
         }
 
         const valueInput = wrap.createEl("input", { cls: "kw-entry-value", type: "text" });
-        valueInput.placeholder = entry.type === "keyword"
+        valueInput.placeholder = entry.type === "linekeyword"
+            ? "行标签，如 cy+gw 或 cy,gw（扫描日记目录）"
+            : entry.type === "keyword"
             ? "标签，如 p1 或 p1+p2"
             : entry.type === "cornell"
                 ? "康奈尔标签，如 康奈尔笔记"

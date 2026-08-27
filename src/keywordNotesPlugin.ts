@@ -261,6 +261,18 @@ export default class KeywordNotesPlugin extends Plugin {
         });
     }
 
+    /** Open journal line-keyword view (list lines only, grouped by journal date). */
+    async openLineKeywordView(keyword: KeywordConfig) {
+        const target = this.getKeywordTarget(keyword);
+
+        await this.openKeywordNoteView((view) => {
+            view.setSelectionMode("linekeyword", target);
+            view.setTimeField("name");
+            view.setIncludeSubTags(true);
+            view.setLineKeywordDisplay(keyword);
+        });
+    }
+
     // Open Xiaohongshu card-wall view for a folder path
     async openXiaohongshuView(folder: FolderConfig) {
         await this.openKeywordNoteView((view) => {
@@ -689,7 +701,7 @@ export default class KeywordNotesPlugin extends Plugin {
         await this.saveData(this.settings);
     }
 
-    getPinnedScopeKey(mode: "folder" | "tag" | "overview" | "cornell" | "xiaohongshu", target: string, includeSubTags = false): string {
+    getPinnedScopeKey(mode: "folder" | "tag" | "overview" | "cornell" | "xiaohongshu" | "linekeyword", target: string, includeSubTags = false): string {
         if (mode === "overview") {
             return `overview:${target}`;
         }
@@ -702,6 +714,11 @@ export default class KeywordNotesPlugin extends Plugin {
         if (mode === "xiaohongshu") {
             const folder = normalizePath(target || "").replace(/^\/+|\/+$/g, "");
             return `xiaohongshu:${folder}`;
+        }
+
+        if (mode === "linekeyword") {
+            const keywords = target.split(/[+,]/).map((item) => item.trim().replace(/^#/, "").toLowerCase()).filter(Boolean);
+            return `linekeyword:${keywords.join("+")}`;
         }
 
         const tagTarget = (target || "")

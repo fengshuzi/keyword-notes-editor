@@ -81,6 +81,9 @@ export class KeywordNoteView extends ItemView {
     // 康奈尔显示配置
     cornellDisplay: KeywordConfig | null = null;
 
+    // 行关键词显示配置
+    lineKeywordDisplay: KeywordConfig | null = null;
+
     // 康奈尔三列显隐（线索 / 正文 / 总结）
     showCue: boolean = true;
     showBody: boolean = true;
@@ -138,6 +141,9 @@ export class KeywordNoteView extends ItemView {
         if (this.cornellDisplay) {
             return `${this.cornellDisplay.icon} ${this.cornellDisplay.alias}`;
         }
+        if (this.lineKeywordDisplay) {
+            return `${this.lineKeywordDisplay.icon} ${this.lineKeywordDisplay.alias}`;
+        }
         if (this.xiaohongshuDisplay) {
             return `🌸 ${this.xiaohongshuDisplay.alias}`;
         }
@@ -149,6 +155,9 @@ export class KeywordNoteView extends ItemView {
         }
         if (this.selectionMode === "cornell" && this.target) {
             return `🌽 #${this.target}`;
+        }
+        if (this.selectionMode === "linekeyword" && this.target) {
+            return `🔖 ${this.target}`;
         }
         if (this.selectionMode === "xiaohongshu" && this.target) {
             return `🌸 ${this.target}`;
@@ -209,6 +218,16 @@ export class KeywordNoteView extends ItemView {
         this.leaf.updateHeader();
     }
 
+    setLineKeywordDisplay(keyword: KeywordConfig) {
+        this.lineKeywordDisplay = keyword;
+        this.keywordDisplay = null;
+        this.folderDisplay = null;
+        this.cornellDisplay = null;
+        this.xiaohongshuDisplay = null;
+        this.overviewDisplay = null;
+        this.leaf.updateHeader();
+    }
+
     setOverviewDisplay(target: OverviewTarget, alias?: string) {
         if (target === "important-urgent") {
             this.overviewDisplay = { target, alias: alias || "重要且紧急", icon: "🔥" };
@@ -246,6 +265,7 @@ export class KeywordNoteView extends ItemView {
         this.keywordDisplay = null;
         this.folderDisplay = null;
         this.cornellDisplay = null;
+        this.lineKeywordDisplay = null;
         this.xiaohongshuDisplay = null;
         this.overviewDisplay = null;
 
@@ -298,6 +318,9 @@ export class KeywordNoteView extends ItemView {
         }
         if (this.selectionMode !== "cornell" && this.cornellDisplay) {
             this.cornellDisplay = null;
+        }
+        if (this.selectionMode !== "linekeyword" && this.lineKeywordDisplay) {
+            this.lineKeywordDisplay = null;
         }
         if (this.selectionMode !== "tag" && this.keywordDisplay) {
             this.keywordDisplay = null;
@@ -395,6 +418,9 @@ export class KeywordNoteView extends ItemView {
         this.registerEvent(this.app.vault.on("create", this.onFileCreate));
         this.registerEvent(this.app.vault.on("delete", this.onFileDelete));
         this.registerEvent(this.app.vault.on("rename", this.onFileRename));
+        this.registerEvent(this.app.vault.on("modify", (file) => {
+            if (file instanceof TFile && this.selectionMode === "linekeyword") this.view?.refresh();
+        }));
 
         // Create Svelte view here so it exists regardless of how the view is opened
         if (!this.view) {

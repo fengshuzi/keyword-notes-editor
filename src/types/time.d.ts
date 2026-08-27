@@ -10,7 +10,7 @@ export type TimeRange =
     | "last-quarter"
     | "custom";
 
-export type SelectionMode = "folder" | "tag" | "overview" | "cornell" | "xiaohongshu";
+export type SelectionMode = "folder" | "tag" | "overview" | "cornell" | "xiaohongshu" | "linekeyword";
 
 export type OverviewTarget = "today" | "todo" | "read-later" | "important-urgent" | `recent:${string}`;
 

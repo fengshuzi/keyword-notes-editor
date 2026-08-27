@@ -128,6 +128,8 @@ export class KeywordListView extends ItemView {
                 } else {
                     this.renderItem(item, "keyword");
                 }
+            } else if (entry.type === "linekeyword" && entry.value) {
+                this.renderLineKeywordItem(entry);
             } else if (entry.type === "folder" && entry.value) {
                 this.renderItem(entryToFolderConfig(entry), "folder");
             } else if (entry.type === "doc" && entry.value) {
@@ -150,6 +152,24 @@ export class KeywordListView extends ItemView {
                 cls: "keyword-list-empty-hint"
             });
         }
+    }
+
+    /** Render a journal line-keyword entry (cy+gw / cy,gw aggregation). */
+    private renderLineKeywordItem(entry: SidebarEntry): void {
+        const itemEl = this.listEl.createDiv({ cls: "keyword-list-item" });
+        itemEl.createSpan({ text: entry.icon, cls: "keyword-list-item-icon" });
+        const nameEl = itemEl.createSpan({ cls: "keyword-list-item-name" });
+        nameEl.setText(entry.alias || entry.value);
+        itemEl.setAttribute("title", `日记行：${entry.value}`);
+        this.markActive(itemEl, "linekeyword", entry.value);
+
+        itemEl.addEventListener("click", () => {
+            this.setActiveItem("linekeyword", entry.value);
+            void this.plugin.openLineKeywordView(entryToKeywordConfig({
+                ...entry,
+                value: entry.value.replace(/,/g, "+"),
+            }));
+        });
     }
 
     private renderOverviewSection(): void {
