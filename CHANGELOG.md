@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.24
 
 - Add `🔖 行关键词` sidebar view: scan configured journal folders for list lines such as `- #cy 餐饮 90`, aggregate `cy+gw` / `cy,gw`, match nested tags, skip code blocks, and group results into date cards
 - Line-keyword cards are read-only extracts; clicking the date or double-clicking content opens the complete journal note for normal editing
